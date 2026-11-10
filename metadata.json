@@ -1,0 +1,6 @@
+{
+  "name": "幻變古遺跡",
+  "description": "2D 俯視角 Roguelike 隨機迷宮探索遊戲，伴隨小雪御劍探險古遺跡。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

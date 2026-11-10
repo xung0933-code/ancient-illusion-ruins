@@ -1,0 +1,144 @@
+{
+  "player": {
+    "baseStats": {
+      "hp": 100,
+      "maxHp": 100,
+      "attack": 30,
+      "defense": 15
+    },
+    "recovery": {
+      "enabled": true,
+      "hpPerTurn": 2,
+      "delayAfterDamage": 3
+    }
+  },
+  "mapLevels": {
+    "beginner": {
+      "id": "beginner",
+      "name": "初級遺跡",
+      "unlocked": true,
+      "mapWidth": 50,
+      "mapHeight": 50,
+      "monsterCount": 10,
+      "normalChestCount": 3,
+      "bossCount": 3,
+      "obstacleDensity": 0.18,
+      "attackBonusValue": 5,
+      "defenseBonusValue": 3
+    },
+    "intermediate": {
+      "id": "intermediate",
+      "name": "中級遺跡",
+      "unlocked": false,
+      "mapWidth": 100,
+      "mapHeight": 100,
+      "monsterCount": 20,
+      "normalChestCount": 10,
+      "bossCount": 10,
+      "obstacleDensity": 0.20,
+      "attackBonusValue": 7,
+      "defenseBonusValue": 4
+    },
+    "advanced": {
+      "id": "advanced",
+      "name": "高級遺跡",
+      "unlocked": false,
+      "mapWidth": 150,
+      "mapHeight": 150,
+      "monsterCount": 50,
+      "normalChestCount": 20,
+      "bossCount": 20,
+      "obstacleDensity": 0.22,
+      "attackBonusValue": 10,
+      "defenseBonusValue": 6
+    }
+  },
+  "monsterStats": {
+    "normal": {
+      "name": "遺跡影魔",
+      "hpRatio": 0.35,
+      "attackRatio": 0.35,
+      "defenseRatio": 0.3,
+      "detectionRadius": 6
+    },
+    "chestBoss": {
+      "name": "寶箱守護尊者",
+      "hpRatio": 1.5,
+      "attackRatio": 1.3,
+      "defenseRatio": 1.4,
+      "detectionRadius": 8
+    },
+    "finalBoss": {
+      "name": "太古遺跡混沌巨龍",
+      "hpRatio": 3.5,
+      "attackRatio": 2.2,
+      "defenseRatio": 2.0,
+      "detectionRadius": 10
+    }
+  },
+  "spells": {
+    "azureDragon": {
+      "id": "azureDragon",
+      "element": "wood",
+      "elementName": "木",
+      "title": "青龍・生命回復",
+      "description": "引動乙木青龍生機，無條件立即將小雪生命值恢復至最大值上限。",
+      "enabled": true,
+      "chargeProbability": 20,
+      "effect": "heal_max"
+    },
+    "whiteTiger": {
+      "id": "whiteTiger",
+      "element": "metal",
+      "elementName": "金",
+      "title": "白虎・攻擊強化",
+      "description": "凝聚西方庚金銳氣，攻擊力提升 15 點，持續 10 回合。",
+      "enabled": true,
+      "chargeProbability": 20,
+      "effect": "buff_attack",
+      "buffValue": 15,
+      "duration": 10
+    },
+    "blackTortoise": {
+      "id": "blackTortoise",
+      "element": "water",
+      "elementName": "水",
+      "title": "玄武・防禦強化",
+      "description": "召喚北方玄武重水法盾，防禦力提升 10 點，持續 10 回合。",
+      "enabled": true,
+      "chargeProbability": 20,
+      "effect": "buff_defense",
+      "buffValue": 10,
+      "duration": 10
+    },
+    "vermilionBird": {
+      "id": "vermilionBird",
+      "element": "fire",
+      "elementName": "火",
+      "title": "朱雀・烈焰爆破",
+      "description": "祭出南方丙火朱雀熾焰，對小雪正前方 3×3 範圍所有敵軍造成 2 倍攻擊力的毀滅爆破傷害。",
+      "enabled": true,
+      "chargeProbability": 20,
+      "effect": "aoe_fire",
+      "damageMultiplier": 2,
+      "range": "3x3"
+    },
+    "yellowDragon": {
+      "id": "yellowDragon",
+      "element": "earth",
+      "elementName": "土",
+      "title": "黃龍・金龍貫擊",
+      "description": "御使中央戊土黃龍厚土貫龍劍氣，對正前方直線最多 5 格範圍內所有目標造成 3 倍穿透貫擊傷害。",
+      "enabled": true,
+      "chargeProbability": 20,
+      "effect": "line_earth",
+      "damageMultiplier": 3,
+      "range": 5
+    }
+  },
+  "chestRewards": {
+    "attackBonusProbability": 40,
+    "defenseBonusProbability": 40,
+    "spellChargeProbability": 20
+  }
+}
