@@ -49,6 +49,7 @@ import {
   Home,
   X,
 } from 'lucide-react';
+import avatarImgUrl from './assets/images/xiaoxue_avatar.png';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -715,7 +716,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           <div className="relative w-11 h-11 rounded-xl overflow-hidden border-2 border-cyan-400/70 shadow-[0_0_12px_rgba(56,189,248,0.3)] bg-slate-800 shrink-0">
             <img
-              src="/public/assets/aistudio/_____3_be38311a.png"
+              src={avatarImgUrl}
               alt="小雪立繪"
               className="w-full h-full object-cover object-top"
               referrerPolicy="no-referrer"
