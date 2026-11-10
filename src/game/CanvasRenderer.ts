@@ -731,11 +731,12 @@ export class CanvasRenderer {
   }
 
   private renderEntityHpBar(cx: number, sy: number, barWidth: number, hp: number, maxHp: number, type: string) {
-    const barHeight = type === 'finalBoss' ? 6 : 4;
+    const isPlayer = type === 'player';
+    const barHeight = type === 'finalBoss' ? 6 : (isPlayer ? 5 : 4);
     const ratio = Math.max(0, Math.min(1, hp / maxHp));
 
     // Background
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    this.ctx.fillStyle = isPlayer ? 'rgba(15, 23, 42, 0.88)' : 'rgba(0, 0, 0, 0.65)';
     this.ctx.fillRect(cx - barWidth / 2, sy, barWidth, barHeight);
 
     // HP Fill
@@ -747,7 +748,7 @@ export class CanvasRenderer {
     this.ctx.fillRect(cx - barWidth / 2, sy, barWidth * ratio, barHeight);
 
     // Border
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    this.ctx.strokeStyle = isPlayer ? 'rgba(56, 189, 248, 0.85)' : 'rgba(255, 255, 255, 0.3)';
     this.ctx.lineWidth = 1;
     this.ctx.strokeRect(cx - barWidth / 2, sy, barWidth, barHeight);
   }
@@ -882,8 +883,9 @@ export class CanvasRenderer {
       this.renderHexagonShield(cx, cy + idleBob, ts * 0.46, now);
     }
 
-    // 5. Xiao Xue Overhead Mini HP Bar
-    this.renderEntityHpBar(cx, screen.y - 8, ts * 0.7, playerStats.hp, playerStats.maxHp, 'player');
+    // 5. Xiao Xue Foot-Level HP Bar (Positioned cleanly below her feet to keep her body completely visible)
+    const playerHpY = cy + ts * 0.42;
+    this.renderEntityHpBar(cx, playerHpY, ts * 0.75, playerStats.hp, playerStats.maxHp, 'player');
   }
 
   // --- Xiao Xue Facing UP (Back View: walking away, showing full flowing hair & back robe) ---
@@ -1195,7 +1197,7 @@ export class CanvasRenderer {
     this.ctx.fillRect(cx + sign * ts * 0.06, cy - ts * 0.32 + idleBob, 2.5, 3);
   }
 
-  // Adaptive Hovering Flying Swords (Tailored to Xiao Xue's 4-direction stance)
+  // Adaptive Hovering Flying Swords (Tailored to Xiao Xue's 4-direction stance with enlarged celestial blades)
   private renderHoveringSwords(
     cx: number,
     cy: number,
@@ -1204,72 +1206,143 @@ export class CanvasRenderer {
     now: number,
     idleBob: number
   ) {
-    const swordBob = Math.sin(now * 0.007) * 3;
+    const swordBob = Math.sin(now * 0.007) * 3.5;
     let swordPositions: { x: number; y: number; angle: number }[] = [];
 
     switch (facing) {
-      case 'UP':
-        // Mounted close together over back
-        swordPositions = [
-          { x: cx - ts * 0.12, y: cy - ts * 0.2 + idleBob + swordBob, angle: 0 },
-          { x: cx + ts * 0.12, y: cy - ts * 0.2 + idleBob - swordBob, angle: 0 },
-        ];
-        break;
       case 'DOWN':
-        // Floating symmetrically at shoulders
+        // Front view: Swords hover behind her shoulders, tilted outward in an elegant '八' framing angle
         swordPositions = [
-          { x: cx - ts * 0.28, y: cy - ts * 0.12 + idleBob + swordBob, angle: 0 },
-          { x: cx + ts * 0.28, y: cy - ts * 0.12 + idleBob - swordBob, angle: 0 },
+          { x: cx - ts * 0.42, y: cy - ts * 0.36 + idleBob + swordBob, angle: -0.22 }, // Left sword tilted outward
+          { x: cx + ts * 0.42, y: cy - ts * 0.36 + idleBob - swordBob, angle: 0.22 },  // Right sword tilted outward
         ];
         break;
-      case 'LEFT':
-        // Both swords trailing behind her on the right side
+      case 'UP':
+        // Back view: Swords hover higher above shoulder blades, canted gently to frame hair
         swordPositions = [
-          { x: cx + ts * 0.22, y: cy - ts * 0.18 + idleBob + swordBob, angle: Math.PI * 0.05 },
-          { x: cx + ts * 0.34, y: cy - ts * 0.08 + idleBob - swordBob, angle: Math.PI * 0.08 },
+          { x: cx - ts * 0.32, y: cy - ts * 0.46 + idleBob + swordBob, angle: -0.15 },
+          { x: cx + ts * 0.32, y: cy - ts * 0.46 + idleBob - swordBob, angle: 0.15 },
         ];
         break;
       case 'RIGHT':
-        // Both swords trailing behind her on the left side
+        // Side view facing right: Swords echelon behind her back on the left, tilted forward-upwards
         swordPositions = [
-          { x: cx - ts * 0.22, y: cy - ts * 0.18 + idleBob + swordBob, angle: -Math.PI * 0.05 },
-          { x: cx - ts * 0.34, y: cy - ts * 0.08 + idleBob - swordBob, angle: -Math.PI * 0.08 },
+          { x: cx - ts * 0.32, y: cy - ts * 0.38 + idleBob + swordBob, angle: -0.42 }, // Inner primary sword
+          { x: cx - ts * 0.50, y: cy - ts * 0.22 + idleBob - swordBob, angle: -0.34 }, // Outer secondary sword
+        ];
+        break;
+      case 'LEFT':
+        // Side view facing left: Swords echelon behind her back on the right, tilted forward-upwards
+        swordPositions = [
+          { x: cx + ts * 0.32, y: cy - ts * 0.38 + idleBob + swordBob, angle: 0.42 },  // Inner primary sword
+          { x: cx + ts * 0.50, y: cy - ts * 0.22 + idleBob - swordBob, angle: 0.34 },  // Outer secondary sword
         ];
         break;
     }
 
-    swordPositions.forEach(pos => {
-      this.ctx.save();
-      this.ctx.translate(pos.x, pos.y);
-      this.ctx.rotate(pos.angle);
-
-      // Spirit sword glow aura
-      this.ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
-      this.ctx.beginPath();
-      this.ctx.arc(0, -ts * 0.08, 9, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Blade
-      const grad = this.ctx.createLinearGradient(0, -ts * 0.28, 0, ts * 0.08);
-      grad.addColorStop(0, '#f0f9ff');
-      grad.addColorStop(0.4, '#38bdf8');
-      grad.addColorStop(1, '#0284c7');
-
-      this.ctx.fillStyle = grad;
-      this.ctx.beginPath();
-      this.ctx.moveTo(0, -ts * 0.26);
-      this.ctx.lineTo(3.5, ts * 0.04);
-      this.ctx.lineTo(-3.5, ts * 0.04);
-      this.ctx.closePath();
-      this.ctx.fill();
-
-      // Hilt guard & pommel
-      this.ctx.fillStyle = '#f59e0b'; // Gold guard
-      this.ctx.fillRect(-5, ts * 0.04, 10, 2);
-      this.ctx.fillRect(-1.5, ts * 0.06, 3, 5);
-
-      this.ctx.restore();
+    swordPositions.forEach((pos, idx) => {
+      this.renderCultivationSword(pos.x, pos.y, pos.angle, ts, now, idx);
     });
+  }
+
+  // Render a single high-grade celestial flying sword with spiritual aura, fuller line, and tassel
+  private renderCultivationSword(
+    x: number,
+    y: number,
+    angle: number,
+    ts: number,
+    now: number,
+    idx: number
+  ) {
+    this.ctx.save();
+    this.ctx.translate(x, y);
+    this.ctx.rotate(angle);
+
+    // 1. Spiritual Sword Cyan Aura / Glow (仙劍護體劍芒)
+    const auraPulse = Math.sin(now * 0.008 + idx * 2.0) * 0.2 + 0.8;
+    this.ctx.save();
+    this.ctx.shadowColor = '#38bdf8';
+    this.ctx.shadowBlur = 12 * auraPulse;
+
+    // Glowing ethereal blade sheath
+    const auraGrad = this.ctx.createLinearGradient(0, -ts * 0.52, 0, ts * 0.12);
+    auraGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+    auraGrad.addColorStop(0.3, 'rgba(56, 189, 248, 0.7)');
+    auraGrad.addColorStop(0.8, 'rgba(2, 132, 199, 0.4)');
+    auraGrad.addColorStop(1, 'rgba(2, 132, 199, 0)');
+
+    this.ctx.fillStyle = auraGrad;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, -ts * 0.52);
+    this.ctx.lineTo(6, ts * 0.08);
+    this.ctx.lineTo(-6, ts * 0.08);
+    this.ctx.closePath();
+    this.ctx.fill();
+    this.ctx.restore();
+
+    // 2. High-Grade Celestial Flying Sword Body (修仙靈劍本體)
+    // Blade: Length approx ts * 0.56 (2x former size), sharp double-edged geometry
+    const bladeGrad = this.ctx.createLinearGradient(0, -ts * 0.50, 0, ts * 0.06);
+    bladeGrad.addColorStop(0, '#ffffff'); // Pure white glint at point
+    bladeGrad.addColorStop(0.3, '#e0f2fe');
+    bladeGrad.addColorStop(0.7, '#38bdf8');
+    bladeGrad.addColorStop(1, '#0284c7');
+
+    this.ctx.fillStyle = bladeGrad;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, -ts * 0.48);      // Sharp needle tip
+    this.ctx.lineTo(4.5, ts * 0.06);     // Right base of blade
+    this.ctx.lineTo(0, ts * 0.08);       // Central tang indent
+    this.ctx.lineTo(-4.5, ts * 0.06);    // Left base of blade
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    // Central Fuller / Spiritual Meridian Line (劍脊流光線)
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    this.ctx.lineWidth = 1.2;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, -ts * 0.45);
+    this.ctx.lineTo(0, ts * 0.06);
+    this.ctx.stroke();
+
+    // 3. Ornate Winged Sword Guard (金絲飛翼劍格)
+    this.ctx.fillStyle = '#fbbf24'; // Warm gold
+    this.ctx.beginPath();
+    this.ctx.moveTo(-7.5, ts * 0.06);
+    this.ctx.lineTo(0, ts * 0.045);
+    this.ctx.lineTo(7.5, ts * 0.06);
+    this.ctx.lineTo(6, ts * 0.095);
+    this.ctx.lineTo(0, ts * 0.08);
+    this.ctx.lineTo(-6, ts * 0.095);
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    // Guard core jewel (碧玉/靈晶)
+    this.ctx.fillStyle = '#06b6d4';
+    this.ctx.beginPath();
+    this.ctx.arc(0, ts * 0.07, 1.8, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // 4. Grip / Hilt (墨玉劍柄)
+    this.ctx.fillStyle = '#1e293b';
+    this.ctx.fillRect(-1.5, ts * 0.095, 3, 8);
+
+    // 5. Pommel with Spirit Ring & Floating Azure Tassel (劍首流蘇)
+    this.ctx.fillStyle = '#fbbf24';
+    this.ctx.beginPath();
+    this.ctx.arc(0, ts * 0.095 + 8, 2.5, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // Flowing tassel fluttering in spiritual breeze
+    const sway = Math.sin(now * 0.006 + idx * 1.5) * 4;
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+    this.ctx.lineWidth = 1.2;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, ts * 0.095 + 10);
+    this.ctx.quadraticCurveTo(sway * 0.5, ts * 0.095 + 16, sway, ts * 0.095 + 22);
+    this.ctx.stroke();
+
+    this.ctx.restore();
   }
 
   // Draw Flying Sword Attack Animation (Melee 1-tile strike & return)
