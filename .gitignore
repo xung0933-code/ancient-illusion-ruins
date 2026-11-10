@@ -8,3 +8,6 @@ coverage/
 !.env.example
 .aistudio/
 .backup/
+*.bundle
+*.tar.gz
+*.zip
