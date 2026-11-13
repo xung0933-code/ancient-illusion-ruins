@@ -47,9 +47,9 @@ export const ChestRewardModal: React.FC<ChestRewardModalProps> = ({ reward, onCl
   const info = renderContent();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/75 backdrop-blur-sm">
       <div
-        className={`w-full max-w-sm bg-gradient-to-b ${info.color} rounded-2xl border p-6 text-center shadow-2xl`}
+        className={`w-full max-w-sm bg-gradient-to-b ${info.color} rounded-2xl border p-5 text-center shadow-2xl`}
       >
         <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-black/50 border border-white/10 flex items-center justify-center">
           {info.icon}

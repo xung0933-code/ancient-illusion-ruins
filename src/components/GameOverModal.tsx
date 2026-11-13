@@ -37,9 +37,9 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   const nextLvl = getNextLevel(currentLevel);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-300">
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md">
       <div
-        className={`w-full max-w-md rounded-2xl border p-6 text-center shadow-2xl ${
+        className={`w-full max-w-sm rounded-2xl border p-5 text-center shadow-2xl max-h-[92%] overflow-y-auto ${
           isVictory
             ? 'bg-gradient-to-b from-amber-950/80 via-slate-900 to-emerald-950/80 border-amber-500/50 shadow-[0_0_50px_rgba(245,158,11,0.25)]'
             : 'bg-gradient-to-b from-rose-950/80 via-slate-900 to-slate-950 border-rose-500/40 shadow-[0_0_50px_rgba(239,68,68,0.2)]'

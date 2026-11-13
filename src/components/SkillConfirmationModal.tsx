@@ -74,9 +74,9 @@ export const SkillConfirmationModal: React.FC<SkillConfirmationModalProps> = ({
   const theme = getElementTheme(spell.element);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/75 backdrop-blur-sm">
       <div
-        className={`relative w-full max-w-md bg-gradient-to-b ${theme.bg} rounded-2xl border ${theme.border} ${theme.glow} p-6 text-slate-100 overflow-hidden shadow-2xl`}
+        className={`relative w-full max-w-sm bg-gradient-to-b ${theme.bg} rounded-2xl border ${theme.border} ${theme.glow} p-5 text-slate-100 overflow-hidden shadow-2xl max-h-[90%] overflow-y-auto`}
       >
         {/* Subtle decorative ancient rune backdrop */}
         <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/5 rounded-full blur-2xl pointer-events-none" />

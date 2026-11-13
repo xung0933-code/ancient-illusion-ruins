@@ -14,9 +14,9 @@ export class CameraSystem {
     this.viewportWidth = width;
     this.viewportHeight = height;
 
-    // Adapt tile size dynamically for comfortable view on mobile / desktop
-    if (width < 640) {
-      this.tileSize = 40;
+    // Adapt tile size dynamically so ~9-10 tiles fit across a 9:16 portrait viewport
+    if (width <= 520) {
+      this.tileSize = Math.max(36, Math.min(46, Math.floor(width / 9.2)));
     } else if (width > 1200) {
       this.tileSize = 52;
     } else {

@@ -45,7 +45,6 @@ import {
   Flame,
   Mountain,
   Crosshair,
-  Info,
   Home,
   X,
 } from 'lucide-react';
@@ -114,6 +113,7 @@ export default function App() {
   } | null>(null);
   const [gameOverState, setGameOverState] = useState<{ isVictory: boolean } | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showRestartConfirm, setShowRestartConfirm] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [logs, setLogs] = useState<GameLogEntry[]>([]);
 
@@ -213,124 +213,180 @@ export default function App() {
     setShowDifficultyModal(true);
   }, []);
 
-  // Window resize & canvas context setup
+  // Latest world state ref so the 60fps loop never restarts or blanks the canvas on movement
+  const renderStateRef = useRef({
+    ground,
+    obstacles,
+    playerPos,
+    playerFacing,
+    chests,
+    finalChest,
+    monsters,
+    playerStats,
+    mapWidth,
+    mapHeight,
+  });
+
+  renderStateRef.current = {
+    ground,
+    obstacles,
+    playerPos,
+    playerFacing,
+    chests,
+    finalChest,
+    monsters,
+    playerStats,
+    mapWidth,
+    mapHeight,
+  };
+
+  // Helper to draw one full frame immediately
+  const drawFrame = useCallback((timestamp: number) => {
+    const canvas = canvasRef.current;
+    const renderer = rendererRef.current;
+    const state = renderStateRef.current;
+    if (!canvas || !renderer || state.ground.length === 0) return;
+
+    // Update camera position
+    cameraRef.current.update(state.playerPos.x, state.playerPos.y, state.mapWidth, state.mapHeight);
+
+    // Clear void
+    renderer.clear(canvas.width, canvas.height);
+
+    // Draw Ground Layer
+    renderer.renderGround(state.ground as any, state.mapWidth, state.mapHeight);
+
+    // Draw Obstacles Layer
+    renderer.renderObstacles(state.obstacles, state.mapWidth, state.mapHeight, timestamp);
+
+    // Draw Chests & Space-Time Vortex
+    if (state.finalChest) {
+      renderer.renderChests(state.chests, state.finalChest, timestamp);
+    }
+
+    // Draw Monsters & Bosses
+    renderer.renderMonsters(state.monsters, timestamp);
+
+    // Update & Draw Flying Sword animations
+    for (let i = flyingSwordsRef.current.length - 1; i >= 0; i--) {
+      const anim = flyingSwordsRef.current[i];
+      const elapsed = timestamp - anim.createdAt;
+      const duration = 120; // 120ms per phase
+
+      if (anim.phase === 'forward') {
+        anim.progress = Math.min(1, elapsed / duration);
+        if (anim.progress >= 1) {
+          anim.phase = 'backward';
+          anim.createdAt = timestamp;
+        }
+      } else {
+        anim.progress = Math.min(1, elapsed / duration);
+        if (anim.progress >= 1) {
+          flyingSwordsRef.current.splice(i, 1);
+        }
+      }
+    }
+    renderer.renderFlyingSwords(flyingSwordsRef.current, timestamp);
+
+    // Determine if an alive enemy is in front of Xiao Xue for reticle aim
+    let fx = state.playerPos.x;
+    let fy = state.playerPos.y;
+    if (state.playerFacing === 'UP') fy -= 1;
+    if (state.playerFacing === 'DOWN') fy += 1;
+    if (state.playerFacing === 'LEFT') fx -= 1;
+    if (state.playerFacing === 'RIGHT') fx += 1;
+    const hasEnemyInFront = state.monsters.some(m => !m.isDead && m.x === fx && m.y === fy);
+
+    // Draw Xiao Xue (Heroine with full 4-direction sprite & aim reticle & hurt flicker)
+    renderer.renderPlayer(
+      state.playerPos,
+      state.playerFacing,
+      state.playerStats,
+      timestamp,
+      flyingSwordsRef.current,
+      hasEnemyInFront,
+      lastHurtTimeRef.current
+    );
+
+    // Draw Spell Effects
+    for (let i = spellEffectsRef.current.length - 1; i >= 0; i--) {
+      const eff = spellEffectsRef.current[i];
+      if (timestamp - eff.createdAt >= eff.duration) {
+        spellEffectsRef.current.splice(i, 1);
+      }
+    }
+    renderer.renderSpellEffects(spellEffectsRef.current, timestamp);
+
+    // Clean & Render Floating Damage/Heal text
+    for (let i = floatingTextsRef.current.length - 1; i >= 0; i--) {
+      const item = floatingTextsRef.current[i];
+      if (timestamp - item.createdAt >= item.lifeTime) {
+        floatingTextsRef.current.splice(i, 1);
+      }
+    }
+    renderer.renderFloatingTexts(floatingTextsRef.current, timestamp);
+  }, []);
+
+  // Window resize & ResizeObserver (Only updates canvas dimensions when container size actually changes!)
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
     const handleResize = () => {
       if (!canvasRef.current) return;
-      const canvas = canvasRef.current;
-      const width = canvas.parentElement?.clientWidth || window.innerWidth;
-      const height = canvas.parentElement?.clientHeight || window.innerHeight;
-      canvas.width = width;
-      canvas.height = height;
+      const targetCanvas = canvasRef.current;
+      const parent = targetCanvas.parentElement;
+      const width = parent?.clientWidth || window.innerWidth;
+      const height = parent?.clientHeight || window.innerHeight;
+      if (width <= 0 || height <= 0) return;
+
+      const sizeChanged = targetCanvas.width !== width || targetCanvas.height !== height;
+      if (sizeChanged) {
+        targetCanvas.width = width;
+        targetCanvas.height = height;
+      }
 
       cameraRef.current.updateViewport(width, height);
-      cameraRef.current.update(playerPos.x, playerPos.y, mapWidth, mapHeight);
 
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        rendererRef.current = new CanvasRenderer(ctx, cameraRef.current);
+      if (!rendererRef.current) {
+        const ctx = targetCanvas.getContext('2d');
+        if (ctx) {
+          rendererRef.current = new CanvasRenderer(ctx, cameraRef.current);
+        }
+      }
+
+      if (sizeChanged) {
+        drawFrame(performance.now());
       }
     };
 
     handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [mapWidth, mapHeight, playerPos.x, playerPos.y]);
 
-  // Main Canvas Render Loop (60 FPS)
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
+      observer = new ResizeObserver(() => handleResize());
+      observer.observe(canvas.parentElement);
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      observer?.disconnect();
+    };
+  }, [drawFrame]);
+
+  // Single Persistent 60 FPS Canvas Render Loop (Zero flicker / zero frame drops)
   useEffect(() => {
     let animId: number;
 
     const renderLoop = (timestamp: number) => {
-      const canvas = canvasRef.current;
-      const renderer = rendererRef.current;
-      if (canvas && renderer && ground.length > 0) {
-        // Update camera position
-        cameraRef.current.update(playerPos.x, playerPos.y, mapWidth, mapHeight);
-
-        // Clear void
-        renderer.clear(canvas.width, canvas.height);
-
-        // Draw Ground Layer
-        renderer.renderGround(ground as any, mapWidth, mapHeight);
-
-        // Draw Obstacles Layer
-        renderer.renderObstacles(obstacles, mapWidth, mapHeight, timestamp);
-
-        // Draw Chests & Space-Time Vortex
-        if (finalChest) {
-          renderer.renderChests(chests, finalChest, timestamp);
-        }
-
-        // Draw Monsters & Bosses
-        renderer.renderMonsters(monsters, timestamp);
-
-        // Update & Draw Flying Sword animations
-        for (let i = flyingSwordsRef.current.length - 1; i >= 0; i--) {
-          const anim = flyingSwordsRef.current[i];
-          const elapsed = timestamp - anim.createdAt;
-          const duration = 120; // 120ms per phase
-
-          if (anim.phase === 'forward') {
-            anim.progress = Math.min(1, elapsed / duration);
-            if (anim.progress >= 1) {
-              anim.phase = 'backward';
-              anim.createdAt = timestamp;
-            }
-          } else {
-            anim.progress = Math.min(1, elapsed / duration);
-            if (anim.progress >= 1) {
-              flyingSwordsRef.current.splice(i, 1);
-            }
-          }
-        }
-        renderer.renderFlyingSwords(flyingSwordsRef.current, timestamp);
-
-        // Determine if an alive enemy is in front of Xiao Xue for reticle aim
-        let fx = playerPos.x;
-        let fy = playerPos.y;
-        if (playerFacing === 'UP') fy -= 1;
-        if (playerFacing === 'DOWN') fy += 1;
-        if (playerFacing === 'LEFT') fx -= 1;
-        if (playerFacing === 'RIGHT') fx += 1;
-        const hasEnemyInFront = monsters.some(m => !m.isDead && m.x === fx && m.y === fy);
-
-        // Draw Xiao Xue (Heroine with full 4-direction sprite & aim reticle & hurt flicker)
-        renderer.renderPlayer(
-          playerPos,
-          playerFacing,
-          playerStats,
-          timestamp,
-          flyingSwordsRef.current,
-          hasEnemyInFront,
-          lastHurtTimeRef.current
-        );
-
-        // Draw Spell Effects
-        for (let i = spellEffectsRef.current.length - 1; i >= 0; i--) {
-          const eff = spellEffectsRef.current[i];
-          if (timestamp - eff.createdAt >= eff.duration) {
-            spellEffectsRef.current.splice(i, 1);
-          }
-        }
-        renderer.renderSpellEffects(spellEffectsRef.current, timestamp);
-
-        // Clean & Render Floating Damage/Heal text
-        for (let i = floatingTextsRef.current.length - 1; i >= 0; i--) {
-          const item = floatingTextsRef.current[i];
-          if (timestamp - item.createdAt >= item.lifeTime) {
-            floatingTextsRef.current.splice(i, 1);
-          }
-        }
-        renderer.renderFloatingTexts(floatingTextsRef.current, timestamp);
-      }
-
+      drawFrame(timestamp);
       animId = requestAnimationFrame(renderLoop);
     };
 
     animId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(animId);
-  }, [ground, obstacles, playerPos, playerFacing, chests, finalChest, monsters, playerStats, mapWidth, mapHeight]);
+  }, [drawFrame]);
 
   // Turn Execution Logic: monsters act -> damage check -> natural recovery -> state update
   const completePlayerActionTurn = useCallback(
@@ -708,172 +764,322 @@ export default function App() {
   const openedChestsCount = chests.filter(c => c.isOpened).length + (finalChest?.isOpened ? 1 : 0);
   const totalChestsCount = chests.length + 1;
 
+  // Check if an alive enemy stands directly in front of Xiao Xue
+  let targetTileX = playerPos.x;
+  let targetTileY = playerPos.y;
+  if (playerFacing === 'UP') targetTileY -= 1;
+  if (playerFacing === 'DOWN') targetTileY += 1;
+  if (playerFacing === 'LEFT') targetTileX -= 1;
+  if (playerFacing === 'RIGHT') targetTileX += 1;
+  const hasTargetInFront = monsters.some(m => !m.isDead && m.x === targetTileX && m.y === targetTileY);
+
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100 flex flex-col">
-      {/* Top Bar Header */}
-      <header className="relative z-20 flex items-center justify-between px-3 md:px-6 py-2.5 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 shadow-lg">
-        {/* Left: Xiao Xue Portrait & Name */}
-        <div className="flex items-center gap-3">
-          <div className="relative w-11 h-11 rounded-xl overflow-hidden border-2 border-cyan-400/70 shadow-[0_0_12px_rgba(56,189,248,0.3)] bg-slate-800 shrink-0">
-            <img
-              src={avatarImgUrl}
-              alt="小雪立繪"
-              className="w-full h-full object-cover object-top"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-base tracking-wide text-white">小雪</span>
-              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-medium tracking-wide">
-                {levelConfig.name} ({levelConfig.mapWidth}×{levelConfig.mapHeight})
-              </span>
-            </div>
-            {/* HP Bar */}
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <div className="w-24 md:w-36 h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
-                  style={{ width: `${Math.max(0, Math.min(100, (playerStats.hp / playerStats.maxHp) * 100))}%` }}
+    <div className="w-screen h-dvh overflow-hidden bg-[#020617] bg-[radial-gradient(ellipse_at_top,_rgba(8,51,68,0.28),_#020617_72%)] flex items-center justify-center font-sans select-none text-slate-100">
+      {/* 9:16 Portrait Mobile Game Shell (Full-screen on phones, crisp 9:16 portrait frame on desktop) */}
+      <div className="relative w-full h-dvh sm:h-[min(96dvh,860px)] sm:w-auto sm:max-w-full sm:aspect-[9/16] sm:rounded-[26px] sm:border sm:border-slate-700/70 sm:shadow-[0_24px_80px_rgba(0,0,0,0.9)] overflow-hidden bg-slate-950 flex flex-col">
+        {/* Top Portrait HUD */}
+        <header className="relative z-20 shrink-0 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-lg">
+          {/* Row 1: Portrait, Name, HP & Quick Actions */}
+          <div className="flex items-center justify-between gap-2 px-2.5 py-1.5">
+            {/* Left: Xiao Xue Portrait & HP */}
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="relative w-10 h-10 rounded-xl overflow-hidden border-2 border-cyan-400/70 shadow-[0_0_10px_rgba(56,189,248,0.25)] bg-slate-800 shrink-0">
+                <img
+                  src={avatarImgUrl}
+                  alt="小雪立繪"
+                  className="w-full h-full object-cover object-top"
+                  referrerPolicy="no-referrer"
                 />
               </div>
-              <span className="text-[11px] font-mono text-emerald-400 tabular-nums">
-                {playerStats.hp}/{playerStats.maxHp}
-              </span>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1.5 text-xs leading-tight">
+                  <span className="font-bold text-sm text-white shrink-0">小雪</span>
+                  <span className="text-slate-500" aria-hidden="true">·</span>
+                  <span className="text-[11px] text-cyan-300 font-medium truncate">
+                    {levelConfig.name} {levelConfig.mapWidth}×{levelConfig.mapHeight}
+                  </span>
+                </div>
+                {/* HP Bar */}
+                <div className="flex items-center gap-1.5 mt-1">
+                  <div className="w-24 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
+                      style={{ width: `${Math.max(0, Math.min(100, (playerStats.hp / playerStats.maxHp) * 100))}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-mono font-semibold text-emerald-400 tabular-nums">
+                    {playerStats.hp}/{playerStats.maxHp}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Controls */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={handleReturnToMenu}
+                className="flex items-center gap-1 px-2 py-1.5 min-h-[36px] rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700/70 text-[11px] font-medium transition-colors cursor-pointer"
+                title="更換難度"
+              >
+                <Home className="w-3.5 h-3.5 text-cyan-400" />
+                <span>難度</span>
+              </button>
+
+              <button
+                onClick={toggleSound}
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                title={isMuted ? '開啟音效' : '靜音'}
+                aria-label={isMuted ? '開啟音效' : '靜音'}
+              >
+                {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
+              </button>
+
+              <button
+                onClick={() => setShowHelpModal(true)}
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                title="操作與規則說明"
+                aria-label="操作與規則說明"
+              >
+                <HelpCircle className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => setShowRestartConfirm(true)}
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                title="重新生成當前地圖"
+                aria-label="重新生成當前地圖"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
             </div>
           </div>
+
+          {/* Row 2: Always-Visible Mobile Stats Strip */}
+          <div className="grid grid-cols-4 border-t border-slate-800/80 bg-slate-950/60 px-2 py-1 text-[11px]">
+            <div className="flex items-center justify-center gap-1">
+              <Sword className="w-3 h-3 text-amber-400 shrink-0" />
+              <span className="text-slate-400">攻</span>
+              <span className="font-mono font-bold text-amber-300 tabular-nums">{effectiveStats.attack}</span>
+              {playerStats.attackBonus > 0 && (
+                <span className="text-[10px] text-amber-400/80 font-mono tabular-nums">+{playerStats.attackBonus}</span>
+              )}
+            </div>
+
+            <div className="flex items-center justify-center gap-1 border-l border-slate-800/70">
+              <Shield className="w-3 h-3 text-cyan-400 shrink-0" />
+              <span className="text-slate-400">防</span>
+              <span className="font-mono font-bold text-cyan-300 tabular-nums">{effectiveStats.defense}</span>
+              {playerStats.defenseBonus > 0 && (
+                <span className="text-[10px] text-cyan-400/80 font-mono tabular-nums">+{playerStats.defenseBonus}</span>
+              )}
+            </div>
+
+            <div className="flex items-center justify-center gap-1 border-l border-slate-800/70">
+              <Sparkles className="w-3 h-3 text-yellow-400 shrink-0" />
+              <span className="text-slate-400">寶箱</span>
+              <span className="font-mono font-bold text-yellow-300 tabular-nums">
+                {openedChestsCount}/{totalChestsCount}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-center gap-1 border-l border-slate-800/70">
+              <Compass className="w-3 h-3 text-indigo-400 shrink-0" />
+              <span className="text-slate-400">回合</span>
+              <span className="font-mono font-bold text-indigo-300 tabular-nums">{turns}</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Main 9:16 Dungeon Canvas Viewport (Unobstructed) */}
+        <div className="relative flex-1 min-h-0 w-full overflow-hidden bg-slate-950">
+          <canvas ref={canvasRef} className="block w-full h-full touch-none" />
+
+          {/* Screen Hurt Red Flash Vignette */}
+          {screenFlashRed && (
+            <div className="pointer-events-none absolute inset-0 z-30 bg-rose-600/35 border-[8px] border-rose-500 shadow-[inset_0_0_50px_rgba(225,29,72,0.8)] animate-pulse" />
+          )}
+
+          {/* Compact Mobile & Desktop Event Ticker (Top of Canvas) */}
+          {logs.length > 0 && (
+            <div className="pointer-events-none absolute top-2 left-2 right-2 z-10 flex flex-col gap-0.5 bg-slate-950/70 backdrop-blur-sm px-2.5 py-1.5 rounded-xl border border-slate-800/70 text-[11px] shadow-md">
+              {logs.slice(0, 2).map((log, idx) => (
+                <div
+                  key={log.id}
+                  className={`truncate ${idx === 1 ? 'opacity-65 text-[10px]' : ''} ${
+                    log.type === 'danger'
+                      ? 'text-rose-400'
+                      : log.type === 'loot'
+                      ? 'text-amber-300'
+                      : log.type === 'spell'
+                      ? 'text-cyan-300 font-medium'
+                      : 'text-slate-200'
+                  }`}
+                >
+                  {log.message}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Center: Core Stats (ATK, DEF, Turn, Chests) */}
-        <div className="hidden sm:flex items-center gap-4 text-xs">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/40 border border-slate-800">
-            <Sword className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-slate-400">攻</span>
-            <span className="font-mono font-bold text-amber-300 tabular-nums">{effectiveStats.attack}</span>
-            {playerStats.attackBonus > 0 && (
-              <span className="text-[10px] text-amber-400/80 font-mono">+{playerStats.attackBonus}</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/40 border border-slate-800">
-            <Shield className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-slate-400">防</span>
-            <span className="font-mono font-bold text-cyan-300 tabular-nums">{effectiveStats.defense}</span>
-            {playerStats.defenseBonus > 0 && (
-              <span className="text-[10px] text-cyan-400/80 font-mono">+{playerStats.defenseBonus}</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/40 border border-slate-800">
-            <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
-            <span className="text-slate-400">寶箱</span>
-            <span className="font-mono font-bold text-yellow-300 tabular-nums">
-              {openedChestsCount}/{totalChestsCount}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/40 border border-slate-800">
-            <Compass className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="text-slate-400">回合</span>
-            <span className="font-mono font-bold text-indigo-300 tabular-nums">{turns}</span>
-          </div>
-        </div>
-
-        {/* Right: Controls & Actions (Level switchers REMOVED to prevent accidental clicks) */}
-        <div className="flex items-center gap-2">
-          {/* Change Difficulty / Return to Menu */}
-          <button
-            onClick={handleReturnToMenu}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/70 text-xs font-medium transition-colors cursor-pointer"
-            title="更換難度 (返回選擇界面)"
-          >
-            <Home className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">更換難度</span>
-          </button>
-
-          {/* Sound Toggle */}
-          <button
-            onClick={toggleSound}
-            className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-            title={isMuted ? '開啟音效' : '靜音'}
-          >
-            {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
-          </button>
-
-          {/* Help Modal Toggle */}
-          <button
-            onClick={() => setShowHelpModal(true)}
-            className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-            title="操作與規則說明"
-          >
-            <HelpCircle className="w-4 h-4" />
-          </button>
-
-          {/* Reset / Restart Run */}
-          <button
-            onClick={() => {
-              if (window.confirm('確定要重新生成當前地圖嗎？')) {
-                initGame(currentLevel);
-              }
-            }}
-            className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-            title="重新生成當前地圖"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
-
-      {/* Main Game Canvas Viewport */}
-      <div className="relative flex-1 w-full h-full overflow-hidden bg-slate-950">
-        <canvas ref={canvasRef} className="block w-full h-full touch-none" />
-
-        {/* Screen Hurt Red Flash Vignette */}
-        {screenFlashRed && (
-          <div className="pointer-events-none absolute inset-0 z-30 bg-rose-600/35 border-[10px] border-rose-500 shadow-[inset_0_0_60px_rgba(225,29,72,0.8)] animate-pulse" />
-        )}
-
-        {/* Desktop Controls Hint (Top-Left overlay) */}
-        <div className="hidden lg:flex flex-col gap-1 absolute top-3 left-4 z-10 bg-slate-900/75 backdrop-blur-md p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 shadow-lg pointer-events-none">
-          <div className="flex items-center gap-1.5 text-slate-200 font-semibold mb-0.5">
-            <Info className="w-3.5 h-3.5 text-cyan-400" />
-            操作指引
-          </div>
-          <div>移動：WASD 或 方向鍵</div>
-          <div>御劍普攻：J 或 空白鍵 (前方一格近戰)</div>
-          <div>互動/開箱：E 或 Enter</div>
-          <div>五行必殺技：數字鍵 1 ~ 5</div>
-        </div>
-
-        {/* Real-time Combat & Event Ticker (Top-Right overlay) */}
-        {logs.length > 0 && (
-          <div className="hidden sm:flex flex-col gap-1 absolute top-3 right-4 z-10 max-w-xs bg-slate-900/80 backdrop-blur-md p-2.5 rounded-xl border border-slate-800/80 text-[11px] shadow-lg pointer-events-none overflow-hidden max-h-32">
-            <span className="text-[10px] text-slate-500 font-medium">遺跡動態</span>
-            {logs.slice(0, 3).map(log => (
-              <div
-                key={log.id}
-                className={`truncate ${
-                  log.type === 'danger'
-                    ? 'text-rose-400'
-                    : log.type === 'loot'
-                    ? 'text-amber-300'
-                    : log.type === 'spell'
-                    ? 'text-cyan-300 font-medium'
-                    : 'text-slate-300'
+        {/* Five Elements Sacred Beast Skill Bar (Always Visible in Thumb Reach) */}
+        <section className="relative z-20 shrink-0 py-1.5 px-2 bg-slate-900/95 backdrop-blur-md border-t border-slate-800">
+          <div className="grid grid-cols-5 gap-1.5 w-full">
+            {/* 1. Wood: Azure Dragon (木・青龍) */}
+            <button
+              onClick={() => handleSkillButtonClick('azureDragon')}
+              className={`relative px-1 py-1.5 min-h-[54px] rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                spellsState.azureDragon.charged
+                  ? 'bg-gradient-to-b from-emerald-600 to-emerald-950 border-emerald-400 text-white shadow-[0_0_12px_rgba(16,185,129,0.5)] active:scale-95'
+                  : 'bg-slate-900/90 hover:bg-slate-800/90 border-emerald-900/50 text-slate-300'
+              }`}
+              title="木・青龍 (點擊查看詳情)"
+            >
+              <div className="flex items-center gap-0.5 text-[11px] font-bold text-emerald-400 whitespace-nowrap">
+                <Heart className="w-3 h-3 fill-current shrink-0" />
+                <span>青龍</span>
+              </div>
+              <span className="text-[9px] text-slate-300 whitespace-nowrap">回復全滿</span>
+              <span
+                className={`text-[9px] px-1 rounded font-mono whitespace-nowrap ${
+                  spellsState.azureDragon.charged
+                    ? 'bg-emerald-400 text-slate-950 font-bold'
+                    : 'bg-slate-800 text-slate-400'
                 }`}
               >
-                {log.message}
-              </div>
-            ))}
-          </div>
-        )}
+                {spellsState.azureDragon.charged ? '就緒' : '未充'}
+              </span>
+              {spellsState.azureDragon.charged && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
+              )}
+            </button>
 
-        {/* Mobile Touch D-Pad & Attack Controls */}
+            {/* 2. Metal: White Tiger (金・白虎) */}
+            <button
+              onClick={() => handleSkillButtonClick('whiteTiger')}
+              className={`relative px-1 py-1.5 min-h-[54px] rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                spellsState.whiteTiger.charged
+                  ? 'bg-gradient-to-b from-amber-600 to-amber-950 border-amber-300 text-white shadow-[0_0_12px_rgba(245,158,11,0.5)] active:scale-95'
+                  : 'bg-slate-900/90 hover:bg-slate-800/90 border-amber-900/50 text-slate-300'
+              }`}
+              title="金・白虎 (點擊查看詳情)"
+            >
+              <div className="flex items-center gap-0.5 text-[11px] font-bold text-amber-400 whitespace-nowrap">
+                <Crosshair className="w-3 h-3 shrink-0" />
+                <span>白虎</span>
+              </div>
+              <span className="text-[9px] text-slate-300 whitespace-nowrap">狂攻+10</span>
+              <span
+                className={`text-[9px] px-1 rounded font-mono whitespace-nowrap ${
+                  spellsState.whiteTiger.charged
+                    ? 'bg-amber-400 text-slate-950 font-bold'
+                    : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {spellsState.whiteTiger.charged ? '就緒' : '未充'}
+              </span>
+              {spellsState.whiteTiger.charged && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
+              )}
+            </button>
+
+            {/* 3. Water: Black Tortoise (水・玄武) */}
+            <button
+              onClick={() => handleSkillButtonClick('blackTortoise')}
+              className={`relative px-1 py-1.5 min-h-[54px] rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                spellsState.blackTortoise.charged
+                  ? 'bg-gradient-to-b from-cyan-600 to-cyan-950 border-cyan-400 text-white shadow-[0_0_12px_rgba(6,182,212,0.5)] active:scale-95'
+                  : 'bg-slate-900/90 hover:bg-slate-800/90 border-cyan-900/50 text-slate-300'
+              }`}
+              title="水・玄武 (點擊查看詳情)"
+            >
+              <div className="flex items-center gap-0.5 text-[11px] font-bold text-cyan-400 whitespace-nowrap">
+                <Shield className="w-3 h-3 fill-current shrink-0" />
+                <span>玄武</span>
+              </div>
+              <span className="text-[9px] text-slate-300 whitespace-nowrap">金剛+10</span>
+              <span
+                className={`text-[9px] px-1 rounded font-mono whitespace-nowrap ${
+                  spellsState.blackTortoise.charged
+                    ? 'bg-cyan-400 text-slate-950 font-bold'
+                    : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {spellsState.blackTortoise.charged ? '就緒' : '未充'}
+              </span>
+              {spellsState.blackTortoise.charged && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-cyan-400 rounded-full animate-ping" />
+              )}
+            </button>
+
+            {/* 4. Fire: Vermilion Bird (火・朱雀) */}
+            <button
+              onClick={() => handleSkillButtonClick('vermilionBird')}
+              className={`relative px-1 py-1.5 min-h-[54px] rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                spellsState.vermilionBird.charged
+                  ? 'bg-gradient-to-b from-rose-600 to-rose-950 border-rose-400 text-white shadow-[0_0_12px_rgba(244,63,94,0.5)] active:scale-95'
+                  : 'bg-slate-900/90 hover:bg-slate-800/90 border-rose-900/50 text-slate-300'
+              }`}
+              title="火・朱雀 (點擊查看詳情)"
+            >
+              <div className="flex items-center gap-0.5 text-[11px] font-bold text-rose-400 whitespace-nowrap">
+                <Flame className="w-3 h-3 fill-current shrink-0" />
+                <span>朱雀</span>
+              </div>
+              <span className="text-[9px] text-slate-300 whitespace-nowrap">3×3爆破</span>
+              <span
+                className={`text-[9px] px-1 rounded font-mono whitespace-nowrap ${
+                  spellsState.vermilionBird.charged
+                    ? 'bg-rose-400 text-slate-950 font-bold'
+                    : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {spellsState.vermilionBird.charged ? '就緒' : '未充'}
+              </span>
+              {spellsState.vermilionBird.charged && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-rose-400 rounded-full animate-ping" />
+              )}
+            </button>
+
+            {/* 5. Earth: Yellow Dragon (土・黃龍) */}
+            <button
+              onClick={() => handleSkillButtonClick('yellowDragon')}
+              className={`relative px-1 py-1.5 min-h-[54px] rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                spellsState.yellowDragon.charged
+                  ? 'bg-gradient-to-b from-yellow-600 to-yellow-950 border-yellow-300 text-white shadow-[0_0_12px_rgba(234,179,8,0.5)] active:scale-95'
+                  : 'bg-slate-900/90 hover:bg-slate-800/90 border-yellow-900/50 text-slate-300'
+              }`}
+              title="土・黃龍 (點擊查看詳情)"
+            >
+              <div className="flex items-center gap-0.5 text-[11px] font-bold text-yellow-400 whitespace-nowrap">
+                <Mountain className="w-3 h-3 shrink-0" />
+                <span>黃龍</span>
+              </div>
+              <span className="text-[9px] text-slate-300 whitespace-nowrap">5格貫穿</span>
+              <span
+                className={`text-[9px] px-1 rounded font-mono whitespace-nowrap ${
+                  spellsState.yellowDragon.charged
+                    ? 'bg-yellow-400 text-slate-950 font-bold'
+                    : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {spellsState.yellowDragon.charged ? '就緒' : '未充'}
+              </span>
+              {spellsState.yellowDragon.charged && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-ping" />
+              )}
+            </button>
+          </div>
+        </section>
+
+        {/* Dedicated Portrait Thumb Control Deck (Always Visible, Zero Canvas Occlusion) */}
         <TouchControls
           onMove={handleMove}
           onAttack={handleAttack}
           onInteract={handleInteract}
           canInteract={interactive !== null}
+          hasTargetInFront={hasTargetInFront}
+          facing={playerFacing}
           interactLabel={
             interactive?.type === 'vortex'
               ? '踏入時空漩渦'
@@ -882,292 +1088,177 @@ export default function App() {
               : '開啟寶箱'
           }
         />
-      </div>
 
-      {/* Bottom Bar: Five Elements Ultimate Skills (五大神獸必殺技專屬按鈕區) */}
-      <footer className="relative z-20 py-2 px-2 sm:px-6 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-2">
-        <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-400">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <span>五大神獸必殺技 (開箱充能·點擊檢視/發動)</span>
-        </div>
+        {/* Skill Confirmation Modal */}
+        <SkillConfirmationModal
+          spell={pendingSpellConfirm}
+          onConfirm={handleConfirmSpellCast}
+          onCancel={handleCancelSpellCast}
+        />
 
-        {/* 5 Elemental Sacred Beast Buttons - Always visible and clear */}
-        <div className="grid grid-cols-5 gap-1.5 sm:gap-2.5 w-full md:w-auto">
-          {/* 1. Wood: Azure Dragon (木・青龍) */}
-          <button
-            onClick={() => handleSkillButtonClick('azureDragon')}
-            className={`relative px-1.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 sm:gap-1 transition-all cursor-pointer ${
-              spellsState.azureDragon.charged
-                ? 'bg-gradient-to-b from-emerald-600 to-emerald-950 border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)] active:scale-95 animate-pulse'
-                : 'bg-slate-900/90 hover:bg-slate-800/90 border-emerald-900/50 hover:border-emerald-700/60 text-slate-300'
-            }`}
-            title="木・青龍 (點擊查看詳情)"
-          >
-            <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-emerald-400">
-              <Heart className="w-3.5 h-3.5 fill-current" />
-              <span>木・青龍</span>
-            </div>
-            <span className="text-[10px] text-slate-300 font-medium">回復全滿</span>
-            <span
-              className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-medium ${
-                spellsState.azureDragon.charged
-                  ? 'bg-emerald-400 text-slate-950 font-bold'
-                  : 'bg-slate-800 text-slate-400'
-              }`}
-            >
-              {spellsState.azureDragon.charged ? '已就緒 [1]' : '未充能 [1]'}
-            </span>
-            {spellsState.azureDragon.charged && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
-            )}
-          </button>
-
-          {/* 2. Metal: White Tiger (金・白虎) */}
-          <button
-            onClick={() => handleSkillButtonClick('whiteTiger')}
-            className={`relative px-1.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 sm:gap-1 transition-all cursor-pointer ${
-              spellsState.whiteTiger.charged
-                ? 'bg-gradient-to-b from-amber-600 to-amber-950 border-amber-300 text-white shadow-[0_0_15px_rgba(245,158,11,0.5)] active:scale-95 animate-pulse'
-                : 'bg-slate-900/90 hover:bg-slate-800/90 border-amber-900/50 hover:border-amber-700/60 text-slate-300'
-            }`}
-            title="金・白虎 (點擊查看詳情)"
-          >
-            <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-amber-400">
-              <Crosshair className="w-3.5 h-3.5" />
-              <span>金・白虎</span>
-            </div>
-            <span className="text-[10px] text-slate-300 font-medium">狂攻(+10)</span>
-            <span
-              className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-medium ${
-                spellsState.whiteTiger.charged
-                  ? 'bg-amber-400 text-slate-950 font-bold'
-                  : 'bg-slate-800 text-slate-400'
-              }`}
-            >
-              {spellsState.whiteTiger.charged ? '已就緒 [2]' : '未充能 [2]'}
-            </span>
-            {spellsState.whiteTiger.charged && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full animate-ping" />
-            )}
-          </button>
-
-          {/* 3. Water: Black Tortoise (水・玄武) */}
-          <button
-            onClick={() => handleSkillButtonClick('blackTortoise')}
-            className={`relative px-1.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 sm:gap-1 transition-all cursor-pointer ${
-              spellsState.blackTortoise.charged
-                ? 'bg-gradient-to-b from-cyan-600 to-cyan-950 border-cyan-400 text-white shadow-[0_0_15px_rgba(6,182,212,0.5)] active:scale-95 animate-pulse'
-                : 'bg-slate-900/90 hover:bg-slate-800/90 border-cyan-900/50 hover:border-cyan-700/60 text-slate-300'
-            }`}
-            title="水・玄武 (點擊查看詳情)"
-          >
-            <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-cyan-400">
-              <Shield className="w-3.5 h-3.5 fill-current" />
-              <span>水・玄武</span>
-            </div>
-            <span className="text-[10px] text-slate-300 font-medium">金剛(+10)</span>
-            <span
-              className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-medium ${
-                spellsState.blackTortoise.charged
-                  ? 'bg-cyan-400 text-slate-950 font-bold'
-                  : 'bg-slate-800 text-slate-400'
-              }`}
-            >
-              {spellsState.blackTortoise.charged ? '已就緒 [3]' : '未充能 [3]'}
-            </span>
-            {spellsState.blackTortoise.charged && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping" />
-            )}
-          </button>
-
-          {/* 4. Fire: Vermilion Bird (火・朱雀) */}
-          <button
-            onClick={() => handleSkillButtonClick('vermilionBird')}
-            className={`relative px-1.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 sm:gap-1 transition-all cursor-pointer ${
-              spellsState.vermilionBird.charged
-                ? 'bg-gradient-to-b from-rose-600 to-rose-950 border-rose-400 text-white shadow-[0_0_15px_rgba(244,63,94,0.5)] active:scale-95 animate-pulse'
-                : 'bg-slate-900/90 hover:bg-slate-800/90 border-rose-900/50 hover:border-rose-700/60 text-slate-300'
-            }`}
-            title="火・朱雀 (點擊查看詳情)"
-          >
-            <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-rose-400">
-              <Flame className="w-3.5 h-3.5 fill-current" />
-              <span>火・朱雀</span>
-            </div>
-            <span className="text-[10px] text-slate-300 font-medium">3×3爆破</span>
-            <span
-              className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-medium ${
-                spellsState.vermilionBird.charged
-                  ? 'bg-rose-400 text-slate-950 font-bold'
-                  : 'bg-slate-800 text-slate-400'
-              }`}
-            >
-              {spellsState.vermilionBird.charged ? '已就緒 [4]' : '未充能 [4]'}
-            </span>
-            {spellsState.vermilionBird.charged && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-400 rounded-full animate-ping" />
-            )}
-          </button>
-
-          {/* 5. Earth: Yellow Dragon (土・黃龍) */}
-          <button
-            onClick={() => handleSkillButtonClick('yellowDragon')}
-            className={`relative px-1.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 sm:gap-1 transition-all cursor-pointer ${
-              spellsState.yellowDragon.charged
-                ? 'bg-gradient-to-b from-yellow-600 to-yellow-950 border-yellow-300 text-white shadow-[0_0_15px_rgba(234,179,8,0.5)] active:scale-95 animate-pulse'
-                : 'bg-slate-900/90 hover:bg-slate-800/90 border-yellow-900/50 hover:border-yellow-700/60 text-slate-300'
-            }`}
-            title="土・黃龍 (點擊查看詳情)"
-          >
-            <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-yellow-400">
-              <Mountain className="w-3.5 h-3.5" />
-              <span>土・黃龍</span>
-            </div>
-            <span className="text-[10px] text-slate-300 font-medium">5格貫穿</span>
-            <span
-              className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-medium ${
-                spellsState.yellowDragon.charged
-                  ? 'bg-yellow-400 text-slate-950 font-bold'
-                  : 'bg-slate-800 text-slate-400'
-              }`}
-            >
-              {spellsState.yellowDragon.charged ? '已就緒 [5]' : '未充能 [5]'}
-            </span>
-            {spellsState.yellowDragon.charged && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-yellow-400 rounded-full animate-ping" />
-            )}
-          </button>
-        </div>
-      </footer>
-
-      {/* Skill Confirmation Modal (Strict requirement from GDD Section 8.2) */}
-      <SkillConfirmationModal
-        spell={pendingSpellConfirm}
-        onConfirm={handleConfirmSpellCast}
-        onCancel={handleCancelSpellCast}
-      />
-
-      {/* Uncharged Skill Info Modal (Explaining sacred beast skill & how to charge it) */}
-      {unchargedSkillInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-slate-900 rounded-2xl border border-slate-700 p-6 text-slate-200 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300">
-                  五行神獸必殺技
-                </span>
-                <span className="text-xs text-amber-400 font-mono">靈力未充能</span>
+        {/* Uncharged Skill Info Modal */}
+        {unchargedSkillInfo && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm">
+            <div className="w-full max-w-sm bg-slate-900 rounded-2xl border border-slate-700 p-5 text-slate-200 shadow-2xl">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-slate-300">五行神獸必殺技</span>
+                  <span className="text-slate-500">·</span>
+                  <span className="text-amber-400 font-mono">靈力未充能</span>
+                </div>
+                <button
+                  onClick={() => setUnchargedSkillInfo(null)}
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                  aria-label="關閉"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-300 shrink-0">
+                  {unchargedSkillInfo.id === 'azureDragon' && <Heart className="w-6 h-6 text-emerald-400 fill-current" />}
+                  {unchargedSkillInfo.id === 'whiteTiger' && <Crosshair className="w-6 h-6 text-amber-400" />}
+                  {unchargedSkillInfo.id === 'blackTortoise' && <Shield className="w-6 h-6 text-cyan-400 fill-current" />}
+                  {unchargedSkillInfo.id === 'vermilionBird' && <Flame className="w-6 h-6 text-rose-400 fill-current" />}
+                  {unchargedSkillInfo.id === 'yellowDragon' && <Mountain className="w-6 h-6 text-yellow-400" />}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">{unchargedSkillInfo.title}</h3>
+                  <p className="text-xs text-slate-400">{unchargedSkillInfo.elementName}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-xs leading-relaxed mb-4">
+                <div>
+                  <span className="text-slate-400 block font-semibold mb-0.5">必殺技威力</span>
+                  <span className="text-cyan-200 font-medium">{unchargedSkillInfo.description}</span>
+                </div>
+                <div className="border-t border-slate-800/80 pt-2">
+                  <span className="text-slate-400 block font-semibold mb-0.5">如何喚醒充能？</span>
+                  <span className="text-amber-300">
+                    探索古遺跡迷宮並開啟寶箱，有機率獲得對應神獸靈力充能！充能完成後按鈕將亮起光芒，點擊即可確認發動。
+                  </span>
+                </div>
+              </div>
+
               <button
                 onClick={() => setUnchargedSkillInfo(null)}
-                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                明白了
               </button>
             </div>
-
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-300">
-                {unchargedSkillInfo.id === 'azureDragon' && <Heart className="w-6 h-6 text-emerald-400 fill-current" />}
-                {unchargedSkillInfo.id === 'whiteTiger' && <Crosshair className="w-6 h-6 text-amber-400" />}
-                {unchargedSkillInfo.id === 'blackTortoise' && <Shield className="w-6 h-6 text-cyan-400 fill-current" />}
-                {unchargedSkillInfo.id === 'vermilionBird' && <Flame className="w-6 h-6 text-rose-400 fill-current" />}
-                {unchargedSkillInfo.id === 'yellowDragon' && <Mountain className="w-6 h-6 text-yellow-400" />}
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">{unchargedSkillInfo.title}</h3>
-                <p className="text-xs text-slate-400">{unchargedSkillInfo.elementName}</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800 text-xs leading-relaxed mb-5">
-              <div>
-                <span className="text-slate-400 block font-semibold mb-0.5">必殺技威力</span>
-                <span className="text-cyan-200 font-medium">{unchargedSkillInfo.description}</span>
-              </div>
-              <div className="border-t border-slate-800/80 pt-2">
-                <span className="text-slate-400 block font-semibold mb-0.5">如何喚醒充能？</span>
-                <span className="text-amber-300">
-                  探索古遺跡迷宮並開啟寶箱，有機率獲得對應神獸靈力充能！充能完成後按鈕將綻放燦爛光芒，點擊即可確認發動。
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setUnchargedSkillInfo(null)}
-              className="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm transition-colors cursor-pointer"
-            >
-              明白了
-            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Difficulty Select Modal (Change level at any time with 3 buttons) */}
-      <DifficultySelectModal
-        isOpen={showDifficultyModal}
-        onClose={() => setShowDifficultyModal(false)}
-        onSelectLevel={handleSelectLevelAndStart}
-        currentLevel={currentLevel}
-      />
+        {/* Restart Confirmation Modal (Replaces window.confirm for clean mobile/iframe experience) */}
+        {showRestartConfirm && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm">
+            <div className="w-full max-w-xs bg-slate-900 rounded-2xl border border-slate-700 p-5 text-slate-200 shadow-2xl text-center">
+              <div className="mx-auto mb-3 w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-400">
+                <RotateCcw className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-white mb-1">重新生成地圖？</h3>
+              <p className="text-xs text-slate-400 mb-5">
+                確定要放棄目前進度，重新隨機生成【{levelConfig.name}】地圖嗎？
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  onClick={() => setShowRestartConfirm(false)}
+                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium border border-slate-700 cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRestartConfirm(false);
+                    initGame(currentLevel);
+                  }}
+                  className="py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold cursor-pointer"
+                >
+                  確定重來
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-      {/* Chest Reward Modal */}
-      <ChestRewardModal reward={chestReward} onClose={() => setChestReward(null)} />
-
-      {/* Victory / Defeat Modal */}
-      {gameOverState && (
-        <GameOverModal
-          isVictory={gameOverState.isVictory}
+        {/* Difficulty Select Modal */}
+        <DifficultySelectModal
+          isOpen={showDifficultyModal}
+          onClose={() => setShowDifficultyModal(false)}
+          onSelectLevel={handleSelectLevelAndStart}
           currentLevel={currentLevel}
-          turns={turns}
-          monstersKilled={monstersKilledCount}
-          chestsOpened={openedChestsCount}
-          totalChests={totalChestsCount}
-          onRestart={(nextLvl) => initGame(nextLvl || currentLevel)}
-          onReturnToMenu={() => setShowDifficultyModal(true)}
         />
-      )}
 
-      {/* Help / Game Rules Modal */}
-      {showHelpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-slate-900 rounded-2xl border border-slate-700 p-6 text-slate-200 shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-3 flex items-center gap-2">
-              <Compass className="w-5 h-5 text-cyan-400" />
-              《幻變古遺跡》探索指南
-            </h3>
+        {/* Chest Reward Modal */}
+        <ChestRewardModal reward={chestReward} onClose={() => setChestReward(null)} />
 
-            <div className="space-y-3 text-xs leading-relaxed text-slate-300 max-h-[60vh] overflow-y-auto pr-1">
-              <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-                <span className="font-bold text-amber-300 block mb-1">一、純粹 Roguelike 核心</span>
-                無飢餓度、無背包管理、無貨幣商店。專注於探索隨機地圖、誅殺怪物與守護 Boss、收集寶箱強化攻防、斬滅太古巨龍通關。
+        {/* Victory / Defeat Modal */}
+        {gameOverState && (
+          <GameOverModal
+            isVictory={gameOverState.isVictory}
+            currentLevel={currentLevel}
+            turns={turns}
+            monstersKilled={monstersKilledCount}
+            chestsOpened={openedChestsCount}
+            totalChests={totalChestsCount}
+            onRestart={(nextLvl) => initGame(nextLvl || currentLevel)}
+            onReturnToMenu={() => setShowDifficultyModal(true)}
+          />
+        )}
+
+        {/* Help / Game Rules Modal */}
+        {showHelpModal && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm">
+            <div className="w-full max-w-sm bg-slate-900 rounded-2xl border border-slate-700 p-5 text-slate-200 shadow-2xl max-h-[90%] flex flex-col">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Compass className="w-5 h-5 text-cyan-400" />
+                  《幻變古遺跡》探索指南
+                </h3>
+                <button
+                  onClick={() => setShowHelpModal(false)}
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                  aria-label="關閉"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-                <span className="font-bold text-cyan-300 block mb-1">二、嚴格回合制與飛劍御劍術</span>
-                小雪行動一格，怪物才行動一次。飛劍普攻判定嚴格為<strong>正前方一格</strong>，若正前方無妖物則無法發動且<strong>不消耗回合</strong>。
+              <div className="space-y-2.5 text-xs leading-relaxed text-slate-300 overflow-y-auto pr-1 flex-1">
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                  <span className="font-bold text-cyan-300 block mb-1">一、直覺觸控與按鍵操作</span>
+                  使用下方十字方向鍵移動、右側【御劍】攻擊正前方一格敵人。面對寶箱或漩渦時點擊中央亮起按鈕即可互動。（電腦亦支援 WASD / 方向鍵、J / 空白鍵、E / Enter、數字鍵 1~5）
+                </div>
+
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                  <span className="font-bold text-amber-300 block mb-1">二、純粹 Roguelike 核心</span>
+                  無飢餓度、無背包管理、無貨幣商店。專注探索迷宮、誅殺怪物與守護 Boss、收集寶箱強化攻防、斬滅太古巨龍通關。
+                </div>
+
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                  <span className="font-bold text-emerald-300 block mb-1">三、自然生命恢復</span>
+                  每次有效行動後，若當回合未受傷且脫離戰鬥 3 回合以上，每回合自然恢復 2 點生命。
+                </div>
+
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                  <span className="font-bold text-yellow-300 block mb-1">四、五行必殺技卡片確認</span>
+                  開箱獲得充能後按鈕亮起。點擊彈出確認卡片（遊戲暫停），點擊【發動】才扣除充能與消耗 1 回合；點擊【取消】保留充能不扣回合。
+                </div>
               </div>
 
-              <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-                <span className="font-bold text-emerald-300 block mb-1">三、自然生命恢復</span>
-                每次有效行動後，若當回合未受傷，且脫離戰鬥延遲 3 回合以上，每回合自然恢復 2 點生命。
-              </div>
-
-              <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-                <span className="font-bold text-yellow-300 block mb-1">四、五行必殺技卡片確認</span>
-                開箱獲得充能後按鈕亮起。點擊按鈕彈出確認卡片（遊戲暫停），點擊【發動】才扣除充能、消耗 1 回合；點擊【取消】保留充能，不消耗回合。
-              </div>
+              <button
+                onClick={() => setShowHelpModal(false)}
+                className="mt-4 w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm transition-colors cursor-pointer shrink-0"
+              >
+                明白，重返探索
+              </button>
             </div>
-
-            <button
-              onClick={() => setShowHelpModal(false)}
-              className="mt-5 w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm transition-colors"
-            >
-              明白，重返探索
-            </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
