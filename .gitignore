@@ -11,3 +11,4 @@ coverage/
 *.bundle
 *.tar.gz
 *.zip
+.firebase/
