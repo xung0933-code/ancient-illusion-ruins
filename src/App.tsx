@@ -119,7 +119,7 @@ export default function App() {
   const [gameOverState, setGameOverState] = useState<{ isVictory: boolean } | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [helpModalTab, setHelpModalTab] = useState<'art_style' | 'rules'>('art_style');
-  const [previewStyleId, setPreviewStyleId] = useState<PreviewStyleId>('classic');
+  const [previewStyleId, setPreviewStyleId] = useState<PreviewStyleId>('battlemap_hd');
   const [showRestartConfirm, setShowRestartConfirm] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [logs, setLogs] = useState<GameLogEntry[]>([]);

@@ -6,11 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Palette, CheckCircle2, Sparkles, Image as ImageIcon } from 'lucide-react';
 import { spriteManager } from '../game/SpriteManager';
-import battlemapStoneUrl from '../assets/images/battlemap/stone_tile.jpg';
-import battlemapGrassUrl from '../assets/images/battlemap/grass_tile.jpg';
-import battlemapPillarUrl from '../assets/images/battlemap/ruins_pillar.png';
-import battlemapTreeUrl from '../assets/images/battlemap/ancient_tree.png';
-import battlemapWallUrl from '../assets/images/battlemap/ruins_wall.png';
+import { battlemapTextures } from '../game/BattlemapTextures';
 
 export type PreviewStyleId =
   | 'battlemap_hd'
@@ -30,53 +26,22 @@ interface StyleDefinition {
   badgeClass: string;
 }
 
-type BattlemapAssetKey = 'stone' | 'grass' | 'pillar' | 'tree' | 'wall';
-const battlemapImages: Partial<Record<BattlemapAssetKey, HTMLImageElement>> = {};
-let battlemapLoadedCount = 0;
-
-if (typeof window !== 'undefined') {
-  const entries: Array<[BattlemapAssetKey, string]> = [
-    ['stone', battlemapStoneUrl],
-    ['grass', battlemapGrassUrl],
-    ['pillar', battlemapPillarUrl],
-    ['tree', battlemapTreeUrl],
-    ['wall', battlemapWallUrl],
-  ];
-  for (const [key, url] of entries) {
-    const img = new Image();
-    img.onload = () => {
-      battlemapLoadedCount++;
-    };
-    img.src = url;
-    battlemapImages[key] = img;
-  }
-}
-
-function areBattlemapImagesReady(): boolean {
-  return (
-    battlemapLoadedCount >= 5 ||
-    (['stone', 'grass', 'pillar', 'tree', 'wall'] as BattlemapAssetKey[]).every(
-      (k) => battlemapImages[k]?.complete && (battlemapImages[k]?.naturalWidth || 0) > 0
-    )
-  );
-}
-
 const STYLE_DEFINITIONS: StyleDefinition[] = [
   {
     id: 'battlemap_hd',
-    badge: 'NEW · 第 3 張實繪原型試作',
-    name: '高清手繪戰棋秘境風（貼圖試作）',
+    badge: '目前套用中（正式實裝）',
+    name: '高清手繪戰棋秘境風（第 3 張原型）',
     subtitle: '手繪墨線石磚 × 繁茂森林草地 × 靈紋斷柱 × 光斑網格',
-    description: '依您指定的第 3 張原型新繪製的 5 格真實貼圖樣本（含投影與林間光斑效果），保留小雪立繪同框比對。',
+    description: '已正式套用至《幻變古遺跡》主地圖（含地面石板/苔原/泥土小徑、古樹、石柱、石牆與苔蘚巨岩），保留小雪立繪同框比對。',
     frameClass: 'border-lime-400/65 bg-gradient-to-b from-emerald-950/55 via-slate-900/95 to-stone-950',
     badgeClass: 'bg-lime-400/20 text-lime-200 border-lime-400/60',
   },
   {
     id: 'classic',
-    badge: '目前套用中（對照基準）',
+    badge: '舊版留存（v1.3.1 原版）',
     name: '現行原版・幾何遺跡',
     subtitle: '簡潔深藍石板 × 高辨識度幾何方塊',
-    description: '目前遊戲中使用的畫法，方便您直接對照下方各風格的差異。',
+    description: '先前版本的簡潔幾何畫法，留作對照參考與貼圖載入時的備援底層樣式。',
     frameClass: 'border-slate-700/90 bg-slate-950/80',
     badgeClass: 'bg-slate-800 text-slate-300 border-slate-600/70',
   },
@@ -148,13 +113,13 @@ function drawStyleSampleStrip(canvas: HTMLCanvasElement, styleId: PreviewStyleId
 
   const tileX = (idx: number) => padX + idx * (ts + gap);
 
-  // Special Render Path for NEW Row: HD Hand-Drawn Battlemap Sprites (3rd Reference Prototype)
+  // Special Render Path for HD Hand-Drawn Battlemap Sprites (3rd Reference Prototype)
   if (styleId === 'battlemap_hd') {
-    const stoneImg = battlemapImages.stone;
-    const grassImg = battlemapImages.grass;
-    const pillarImg = battlemapImages.pillar;
-    const treeImg = battlemapImages.tree;
-    const wallImg = battlemapImages.wall;
+    const stoneTex = battlemapTextures.get('stone');
+    const grassTex = battlemapTextures.get('grass');
+    const pillarTex = battlemapTextures.get('pillar');
+    const treeTex = battlemapTextures.get('tree');
+    const wallTex = battlemapTextures.get('wall');
 
     const drawGridLineAndDapple = (sx: number, sy: number, withWarmSpot: boolean) => {
       if (withWarmSpot) {
@@ -179,8 +144,8 @@ function drawStyleSampleStrip(canvas: HTMLCanvasElement, styleId: PreviewStyleId
 
     // 1. Stone floor + Xiao Xue
     const x1 = tileX(0);
-    if (stoneImg && stoneImg.complete && stoneImg.naturalWidth > 0) {
-      ctx.drawImage(stoneImg, x1, topY, ts, ts);
+    if (stoneTex) {
+      ctx.drawImage(stoneTex.canvas, x1, topY, ts, ts);
     } else {
       ctx.fillStyle = '#5c4d3c';
       ctx.fillRect(x1, topY, ts, ts);
@@ -196,8 +161,8 @@ function drawStyleSampleStrip(canvas: HTMLCanvasElement, styleId: PreviewStyleId
 
     // 2. Grass turf
     const x2 = tileX(1);
-    if (grassImg && grassImg.complete && grassImg.naturalWidth > 0) {
-      ctx.drawImage(grassImg, x2, topY, ts, ts);
+    if (grassTex) {
+      ctx.drawImage(grassTex.canvas, x2, topY, ts, ts);
     } else {
       ctx.fillStyle = '#2e5c31';
       ctx.fillRect(x2, topY, ts, ts);
@@ -206,8 +171,8 @@ function drawStyleSampleStrip(canvas: HTMLCanvasElement, styleId: PreviewStyleId
 
     // 3. Stone floor + Ancient Glowing Rune Pillar
     const x3 = tileX(2);
-    if (stoneImg && stoneImg.complete && stoneImg.naturalWidth > 0) {
-      ctx.drawImage(stoneImg, x3, topY, ts, ts);
+    if (stoneTex) {
+      ctx.drawImage(stoneTex.canvas, x3, topY, ts, ts);
     }
     drawGridLineAndDapple(x3, topY, false);
     const cx3 = x3 + ts / 2;
@@ -216,16 +181,16 @@ function drawStyleSampleStrip(canvas: HTMLCanvasElement, styleId: PreviewStyleId
     ctx.beginPath();
     ctx.ellipse(cx3 + 3, cy3 + ts * 0.35, ts * 0.42, ts * 0.16, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (pillarImg && pillarImg.complete && pillarImg.naturalWidth > 0) {
+    if (pillarTex) {
       const pw = ts * 0.94;
-      const ph = pw * (pillarImg.naturalHeight / pillarImg.naturalWidth);
-      ctx.drawImage(pillarImg, cx3 - pw / 2, topY + ts * 0.92 - ph, pw, ph);
+      const ph = pw * (pillarTex.height / pillarTex.width);
+      ctx.drawImage(pillarTex.canvas, cx3 - pw / 2, topY + ts * 0.92 - ph, pw, ph);
     }
 
     // 4. Grass + Ancient Lush Tree
     const x4 = tileX(3);
-    if (grassImg && grassImg.complete && grassImg.naturalWidth > 0) {
-      ctx.drawImage(grassImg, x4, topY, ts, ts);
+    if (grassTex) {
+      ctx.drawImage(grassTex.canvas, x4, topY, ts, ts);
     }
     drawGridLineAndDapple(x4, topY, false);
     const cx4 = x4 + ts / 2;
@@ -234,23 +199,23 @@ function drawStyleSampleStrip(canvas: HTMLCanvasElement, styleId: PreviewStyleId
     ctx.beginPath();
     ctx.ellipse(cx4 + 3, cy4 + ts * 0.33, ts * 0.44, ts * 0.17, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (treeImg && treeImg.complete && treeImg.naturalWidth > 0) {
+    if (treeTex) {
       const th = ts * 1.46;
-      const tw = th * (treeImg.naturalWidth / treeImg.naturalHeight);
-      ctx.drawImage(treeImg, cx4 - tw / 2, topY + ts * 0.92 - th, tw, th);
+      const tw = th * (treeTex.width / treeTex.height);
+      ctx.drawImage(treeTex.canvas, cx4 - tw / 2, topY + ts * 0.92 - th, tw, th);
     }
 
     // 5. Grass base + Mossy Ruin Wall Block
     const x5 = tileX(4);
-    if (grassImg && grassImg.complete && grassImg.naturalWidth > 0) {
-      ctx.drawImage(grassImg, x5, topY, ts, ts);
+    if (grassTex) {
+      ctx.drawImage(grassTex.canvas, x5, topY, ts, ts);
     }
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
     ctx.fillRect(x5 + 1, topY + ts * 0.72, ts - 2, ts * 0.3);
-    if (wallImg && wallImg.complete && wallImg.naturalWidth > 0) {
+    if (wallTex) {
       const ww = ts * 0.98;
-      const wh = ww * (wallImg.naturalHeight / wallImg.naturalWidth);
-      ctx.drawImage(wallImg, x5 + (ts - ww) / 2, topY + ts * 0.98 - wh, ww, wh);
+      const wh = ww * (wallTex.height / wallTex.width);
+      ctx.drawImage(wallTex.canvas, x5 + (ts - ww) / 2, topY + ts * 0.98 - wh, ww, wh);
     }
 
     ctx.restore();
@@ -708,10 +673,10 @@ export const ArtStyleShowcase: React.FC<ArtStyleShowcaseProps> = ({
 
   // Ensure Xiao Xue sprite and battlemap tile textures trigger clean redraw once loaded
   useEffect(() => {
-    if (spriteManager.isReady('DOWN') && areBattlemapImagesReady()) return;
+    if (spriteManager.isReady('DOWN') && battlemapTextures.isAllReady()) return;
     const timer = window.setInterval(() => {
       setSpriteTick((t) => t + 1);
-      if (spriteManager.isReady('DOWN') && areBattlemapImagesReady()) {
+      if (spriteManager.isReady('DOWN') && battlemapTextures.isAllReady()) {
         window.clearInterval(timer);
       }
     }, 120);
@@ -841,9 +806,9 @@ export const ArtStyleShowcase: React.FC<ArtStyleShowcaseProps> = ({
       </div>
 
       <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5 text-[10px] text-slate-400 flex items-center gap-1.5">
-        <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+        <Sparkles className="w-3.5 h-3.5 text-lime-400 shrink-0" />
         <span>
-          目前主遊戲畫面仍維持「現行原版」，請先檢視最上方新增的「高清手繪戰棋秘境風」貼圖列，滿意後再套用到整張遺跡地圖！
+          「高清手繪戰棋秘境風（第 3 張原型）」已正式套用至遊戲主地圖！下方其餘風格列持續保留，作為未來擴充自訂主題之範本。
         </span>
       </div>
     </div>

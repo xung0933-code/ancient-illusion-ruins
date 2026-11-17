@@ -18,6 +18,7 @@ import {
   SpellVisualEffect,
 } from './types';
 import { spriteManager } from './SpriteManager';
+import { battlemapTextures } from './BattlemapTextures';
 
 export class CanvasRenderer {
   private ctx: CanvasRenderingContext2D;
@@ -29,17 +30,19 @@ export class CanvasRenderer {
   }
 
   public clear(width: number, height: number) {
-    this.ctx.fillStyle = '#0b0f19'; // Deep mysterious ancient ruins void
+    this.ctx.fillStyle = '#09110d'; // Deep lush forest-ruin edge shadow
     this.ctx.fillRect(0, 0, width, height);
   }
 
-  // Draw Ground Layer (Clear, bright, walkable ancient paved floor tiles)
+  // Draw Ground Layer (HD Hand-Drawn Fantasy Battlemap tiles with dappled sunlight & crisp tactical grid)
   public renderGround(
     ground: GroundTileType[][],
     mapWidth: number,
     mapHeight: number
   ) {
     const ts = this.camera.tileSize;
+    const stoneTex = battlemapTextures.get('stone');
+    const grassTex = battlemapTextures.get('grass');
 
     for (let y = 0; y < mapHeight; y++) {
       for (let x = 0; x < mapWidth; x++) {
@@ -47,100 +50,136 @@ export class CanvasRenderer {
 
         const screen = this.camera.tileToScreen(x, y);
         const tileType = ground[y][x];
+        const tileHash = (x * 73 + y * 139 + x * y * 17) & 15;
 
-        // Draw base ground with clear, readable walkable tones
         switch (tileType) {
           case 'stone': {
-            // Weathered ancient stone pavers
-            const isAlt = (x + y) % 2 === 0;
-            this.ctx.fillStyle = isAlt ? '#333e52' : '#39465c';
-            this.ctx.fillRect(screen.x, screen.y, ts, ts);
-
-            // Inner paver slab highlight & border
-            this.ctx.fillStyle = isAlt ? '#3a475d' : '#404e67';
-            this.ctx.fillRect(screen.x + 2, screen.y + 2, ts - 4, ts - 4);
-
-            // Carved subtle floor rune lines
-            this.ctx.strokeStyle = 'rgba(100, 116, 139, 0.4)';
-            this.ctx.lineWidth = 1;
-            this.ctx.strokeRect(screen.x + 2, screen.y + 2, ts - 4, ts - 4);
-
-            // Tiny ancient stone floor crack/detail
-            if ((x * 7 + y * 13) % 5 === 0) {
-              this.ctx.strokeStyle = 'rgba(30, 41, 59, 0.6)';
-              this.ctx.beginPath();
-              this.ctx.moveTo(screen.x + ts * 0.3, screen.y + ts * 0.25);
-              this.ctx.lineTo(screen.x + ts * 0.5, screen.y + ts * 0.55);
-              this.ctx.lineTo(screen.x + ts * 0.7, screen.y + ts * 0.6);
-              this.ctx.stroke();
+            if (stoneTex) {
+              this.drawFlippedTile(stoneTex.canvas, screen.x, screen.y, ts, tileHash % 4 === 1, false);
+            } else {
+              const isAlt = (x + y) % 2 === 0;
+              this.ctx.fillStyle = isAlt ? '#4f463b' : '#584e42';
+              this.ctx.fillRect(screen.x, screen.y, ts, ts);
+            }
+            // Subtle sunlit clearing dapple or forest canopy shadow
+            if (tileHash < 4) {
+              this.drawSunlitDapple(screen.x, screen.y, ts, 0.22);
+            } else if (tileHash > 12) {
+              this.ctx.fillStyle = 'rgba(6, 20, 14, 0.14)';
+              this.ctx.fillRect(screen.x, screen.y, ts, ts);
             }
             break;
           }
           case 'moss_stone': {
-            // Ancient mossy stone paver
-            const isAlt = (x + y) % 2 === 0;
-            this.ctx.fillStyle = isAlt ? '#2d3d36' : '#33473f';
-            this.ctx.fillRect(screen.x, screen.y, ts, ts);
-
-            this.ctx.fillStyle = isAlt ? '#354b42' : '#3c544a';
-            this.ctx.fillRect(screen.x + 2, screen.y + 2, ts - 4, ts - 4);
-
-            this.ctx.strokeStyle = 'rgba(74, 222, 128, 0.25)';
-            this.ctx.lineWidth = 1;
-            this.ctx.strokeRect(screen.x + 2, screen.y + 2, ts - 4, ts - 4);
-
-            // Soft green moss patches
-            this.ctx.fillStyle = 'rgba(34, 197, 94, 0.25)';
+            if (stoneTex) {
+              this.drawFlippedTile(stoneTex.canvas, screen.x, screen.y, ts, tileHash % 2 === 0, tileHash % 4 === 3);
+            } else {
+              this.ctx.fillStyle = '#3c4c3d';
+              this.ctx.fillRect(screen.x, screen.y, ts, ts);
+            }
+            // Organic mossy glaze + subtle grass patch peek
+            if (grassTex) {
+              this.ctx.save();
+              this.ctx.globalAlpha = 0.28 + (tileHash % 3) * 0.08;
+              this.ctx.drawImage(grassTex.canvas, screen.x, screen.y, ts, ts);
+              this.ctx.restore();
+            } else {
+              this.ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
+              this.ctx.fillRect(screen.x, screen.y, ts, ts);
+            }
+            // Hand-drawn ink moss cluster accents
+            this.ctx.fillStyle = 'rgba(74, 155, 58, 0.42)';
             this.ctx.beginPath();
-            this.ctx.arc(screen.x + ts * 0.35, screen.y + ts * 0.4, ts * 0.2, 0, Math.PI * 2);
-            this.ctx.arc(screen.x + ts * 0.7, screen.y + ts * 0.65, ts * 0.15, 0, Math.PI * 2);
+            this.ctx.arc(screen.x + ts * 0.28, screen.y + ts * 0.34, ts * 0.13, 0, Math.PI * 2);
+            this.ctx.arc(screen.x + ts * 0.72, screen.y + ts * 0.68, ts * 0.11, 0, Math.PI * 2);
             this.ctx.fill();
+            if (tileHash < 3) {
+              this.drawSunlitDapple(screen.x, screen.y, ts, 0.18);
+            }
             break;
           }
           case 'dirt': {
-            // Compacted ancient courtyard earth with embedded stone cobbles
-            const isAlt = (x + y) % 2 === 0;
-            this.ctx.fillStyle = isAlt ? '#45382e' : '#4d3f34';
-            this.ctx.fillRect(screen.x, screen.y, ts, ts);
-
-            this.ctx.fillStyle = isAlt ? '#4f4136' : '#57493c';
-            this.ctx.fillRect(screen.x + 2, screen.y + 2, ts - 4, ts - 4);
-
-            // Cobble stone dots
-            this.ctx.fillStyle = 'rgba(120, 113, 108, 0.4)';
+            // Warm cobbled woodland trail matching Reference #3's earthen path
+            if (stoneTex) {
+              this.drawFlippedTile(stoneTex.canvas, screen.x, screen.y, ts, tileHash % 3 === 0, tileHash % 5 === 0);
+              this.ctx.fillStyle = 'rgba(134, 88, 43, 0.36)';
+              this.ctx.fillRect(screen.x, screen.y, ts, ts);
+            } else {
+              this.ctx.fillStyle = (x + y) % 2 === 0 ? '#5c4632' : '#654e38';
+              this.ctx.fillRect(screen.x, screen.y, ts, ts);
+            }
+            // Hand-drawn warm cobble stones & leaf specks
+            this.ctx.fillStyle = 'rgba(217, 179, 130, 0.24)';
             this.ctx.beginPath();
-            this.ctx.arc(screen.x + ts * 0.3, screen.y + ts * 0.3, 3, 0, Math.PI * 2);
-            this.ctx.arc(screen.x + ts * 0.65, screen.y + ts * 0.4, 2.5, 0, Math.PI * 2);
-            this.ctx.arc(screen.x + ts * 0.45, screen.y + ts * 0.7, 3.5, 0, Math.PI * 2);
+            this.ctx.ellipse(screen.x + ts * 0.32, screen.y + ts * 0.36, ts * 0.12, ts * 0.08, 0.3, 0, Math.PI * 2);
+            this.ctx.ellipse(screen.x + ts * 0.68, screen.y + ts * 0.64, ts * 0.1, ts * 0.07, -0.4, 0, Math.PI * 2);
             this.ctx.fill();
+            if (tileHash < 4) {
+              this.drawSunlitDapple(screen.x, screen.y, ts, 0.2);
+            }
             break;
           }
           case 'grass': {
-            // Overgrown ancient ruins grass lawn
-            const isAlt = (x + y) % 2 === 0;
-            this.ctx.fillStyle = isAlt ? '#254432' : '#2c4d39';
-            this.ctx.fillRect(screen.x, screen.y, ts, ts);
-
-            this.ctx.fillStyle = isAlt ? '#2e543e' : '#355f46';
-            this.ctx.fillRect(screen.x + 2, screen.y + 2, ts - 4, ts - 4);
-
-            // Small wildflower and grass blade highlights
-            this.ctx.fillStyle = 'rgba(187, 247, 208, 0.5)';
-            this.ctx.fillRect(screen.x + ts * 0.25, screen.y + ts * 0.3, 2, 4);
-            this.ctx.fillRect(screen.x + ts * 0.7, screen.y + ts * 0.6, 2, 4);
+            if (grassTex) {
+              this.drawFlippedTile(grassTex.canvas, screen.x, screen.y, ts, tileHash % 2 === 1, tileHash % 4 >= 2);
+            } else {
+              const isAlt = (x + y) % 2 === 0;
+              this.ctx.fillStyle = isAlt ? '#2c5b30' : '#326636';
+              this.ctx.fillRect(screen.x, screen.y, ts, ts);
+            }
+            if (tileHash < 5) {
+              this.drawSunlitDapple(screen.x, screen.y, ts, 0.25);
+            } else if (tileHash > 12) {
+              this.ctx.fillStyle = 'rgba(5, 22, 12, 0.15)';
+              this.ctx.fillRect(screen.x, screen.y, ts, ts);
+            }
             break;
           }
         }
 
-        // Distinct subtle dark floor grid line to make each step and walkability 100% crisp
-        this.ctx.strokeStyle = 'rgba(15, 23, 42, 0.45)';
+        // Crisp tactical battlemap grid overlay (subtle dark hairline, keeps movement 100% readable)
+        this.ctx.strokeStyle = 'rgba(15, 23, 42, 0.44)';
         this.ctx.lineWidth = 1;
-        this.ctx.strokeRect(screen.x, screen.y, ts, ts);
+        this.ctx.strokeRect(screen.x + 0.5, screen.y + 0.5, ts - 1, ts - 1);
       }
     }
   }
 
-  // Draw Obstacles Layer (Unmistakable 3D vertical physical barriers with distinct height and shadows)
+  private drawFlippedTile(
+    source: HTMLCanvasElement,
+    sx: number,
+    sy: number,
+    ts: number,
+    flipX: boolean,
+    flipY: boolean
+  ) {
+    if (!flipX && !flipY) {
+      this.ctx.drawImage(source, sx, sy, ts, ts);
+      return;
+    }
+    this.ctx.save();
+    this.ctx.translate(sx + (flipX ? ts : 0), sy + (flipY ? ts : 0));
+    this.ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+    this.ctx.drawImage(source, 0, 0, ts, ts);
+    this.ctx.restore();
+  }
+
+  private drawSunlitDapple(sx: number, sy: number, ts: number, strength: number) {
+    const sunGrad = this.ctx.createRadialGradient(
+      sx + ts * 0.46,
+      sy + ts * 0.42,
+      2,
+      sx + ts * 0.46,
+      sy + ts * 0.42,
+      ts * 0.72
+    );
+    sunGrad.addColorStop(0, `rgba(254, 249, 195, ${strength})`);
+    sunGrad.addColorStop(1, 'rgba(254, 249, 195, 0)');
+    this.ctx.fillStyle = sunGrad;
+    this.ctx.fillRect(sx, sy, ts, ts);
+  }
+
+  // Draw Obstacles Layer (HD Hand-Drawn Battlemap sprites with cast shadows & tactile ink depth)
   public renderObstacles(
     obstacles: (ObstacleType | null)[][],
     mapWidth: number,
@@ -148,6 +187,9 @@ export class CanvasRenderer {
     now: number
   ) {
     const ts = this.camera.tileSize;
+    const wallTex = battlemapTextures.get('wall');
+    const pillarTex = battlemapTextures.get('pillar');
+    const treeTex = battlemapTextures.get('tree');
 
     for (let y = 0; y < mapHeight; y++) {
       for (let x = 0; x < mapWidth; x++) {
@@ -159,61 +201,28 @@ export class CanvasRenderer {
 
         switch (obs) {
           case 'wall': {
-            // 1. Dark Cast Shadow onto the ground
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-            this.ctx.fillRect(screen.x, screen.y + ts * 0.7, ts, ts * 0.35);
+            // Soft cast shadow onto ground below
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.52)';
+            this.ctx.fillRect(screen.x + 1, screen.y + ts * 0.72, ts - 2, ts * 0.32);
 
-            // 2. Vertical Wall Front Face (Stacked ancient dark granite megaliths)
-            this.ctx.fillStyle = isBorder ? '#0f172a' : '#171e2e';
-            this.ctx.fillRect(screen.x, screen.y + ts * 0.2, ts, ts * 0.8);
+            if (wallTex) {
+              const ww = ts * 1.04;
+              const wh = ww * (wallTex.height / wallTex.width);
+              const wx = screen.x + (ts - ww) / 2;
+              const wy = screen.y + ts * 1.0 - wh;
+              this.ctx.drawImage(wallTex.canvas, wx, wy, ww, wh);
 
-            // Masonry brick coursing lines on front face
-            this.ctx.strokeStyle = '#283347';
-            this.ctx.lineWidth = 1.5;
-            this.ctx.beginPath();
-            // Horizontal brick seam
-            this.ctx.moveTo(screen.x, screen.y + ts * 0.55);
-            this.ctx.lineTo(screen.x + ts, screen.y + ts * 0.55);
-            // Vertical mortar joints
-            this.ctx.moveTo(screen.x + ts * 0.5, screen.y + ts * 0.2);
-            this.ctx.lineTo(screen.x + ts * 0.5, screen.y + ts * 0.55);
-            this.ctx.moveTo(screen.x + ts * 0.25, screen.y + ts * 0.55);
-            this.ctx.lineTo(screen.x + ts * 0.25, screen.y + ts);
-            this.ctx.moveTo(screen.x + ts * 0.75, screen.y + ts * 0.55);
-            this.ctx.lineTo(screen.x + ts * 0.75, screen.y + ts);
-            this.ctx.stroke();
-
-            // 3. Wall Top Cap (Bright elevated stone surface - 3D depth)
-            const topGrad = this.ctx.createLinearGradient(screen.x, screen.y, screen.x, screen.y + ts * 0.25);
-            topGrad.addColorStop(0, isBorder ? '#334155' : '#475569');
-            topGrad.addColorStop(1, isBorder ? '#1e293b' : '#334155');
-            this.ctx.fillStyle = topGrad;
-            this.ctx.fillRect(screen.x, screen.y - ts * 0.08, ts, ts * 0.28);
-
-            // Bright top ledge highlight
-            this.ctx.strokeStyle = isBorder ? '#64748b' : '#94a3b8';
-            this.ctx.lineWidth = 1.5;
-            this.ctx.strokeRect(screen.x + 1, screen.y - ts * 0.08, ts - 2, ts * 0.28);
-
-            // Impassable warning rune or ivy on wall
-            if (!isBorder && (x * 3 + y * 7) % 4 === 0) {
-              // Climbing ancient ivy
-              this.ctx.fillStyle = '#166534';
-              this.ctx.beginPath();
-              this.ctx.arc(screen.x + ts * 0.3, screen.y + ts * 0.7, 4, 0, Math.PI * 2);
-              this.ctx.arc(screen.x + ts * 0.4, screen.y + ts * 0.5, 3.5, 0, Math.PI * 2);
-              this.ctx.arc(screen.x + ts * 0.25, screen.y + ts * 0.4, 3, 0, Math.PI * 2);
-              this.ctx.fill();
-            }
-
-            if (isBorder) {
-              // Outer boundary seal rune
-              this.ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
-              this.ctx.lineWidth = 1;
-              this.ctx.beginPath();
-              this.ctx.moveTo(screen.x, screen.y);
-              this.ctx.lineTo(screen.x + ts, screen.y + ts * 0.2);
-              this.ctx.stroke();
+              if (isBorder) {
+                // Dark woodland boundary tint + subtle arcane border line
+                this.ctx.fillStyle = 'rgba(4, 14, 10, 0.28)';
+                this.ctx.fillRect(wx, wy, ww, wh);
+                this.ctx.strokeStyle = 'rgba(239, 68, 68, 0.28)';
+                this.ctx.lineWidth = 1;
+                this.ctx.strokeRect(screen.x + 1, screen.y + 1, ts - 2, ts - 2);
+              }
+            } else {
+              this.ctx.fillStyle = isBorder ? '#1c241e' : '#2d372f';
+              this.ctx.fillRect(screen.x, screen.y + ts * 0.16, ts, ts * 0.84);
             }
             break;
           }
@@ -221,153 +230,137 @@ export class CanvasRenderer {
             const cx = screen.x + ts / 2;
             const cy = screen.y + ts / 2;
 
-            // 1. Broad Ground Shadow
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            // Broad ground cast shadow
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.54)';
             this.ctx.beginPath();
-            this.ctx.ellipse(cx + ts * 0.1, cy + ts * 0.38, ts * 0.4, ts * 0.16, 0, 0, Math.PI * 2);
+            this.ctx.ellipse(cx + ts * 0.08, cy + ts * 0.36, ts * 0.42, ts * 0.17, 0, 0, Math.PI * 2);
             this.ctx.fill();
 
-            // 2. Pillar Base Pedestal
-            this.ctx.fillStyle = '#1e293b';
-            this.ctx.beginPath();
-            this.ctx.roundRect(cx - ts * 0.32, cy + ts * 0.2, ts * 0.64, ts * 0.2, 3);
-            this.ctx.fill();
+            if (pillarTex) {
+              const pw = ts * 0.96;
+              const ph = pw * (pillarTex.height / pillarTex.width);
+              this.ctx.drawImage(pillarTex.canvas, cx - pw / 2, screen.y + ts * 0.94 - ph, pw, ph);
 
-            // 3. Tall Cylindrical Column (Rises up above tile)
-            const shaftGrad = this.ctx.createLinearGradient(cx - ts * 0.25, cy, cx + ts * 0.25, cy);
-            shaftGrad.addColorStop(0, '#1e293b');
-            shaftGrad.addColorStop(0.3, '#475569');
-            shaftGrad.addColorStop(0.7, '#64748b');
-            shaftGrad.addColorStop(1, '#0f172a');
-            this.ctx.fillStyle = shaftGrad;
-            this.ctx.fillRect(cx - ts * 0.25, screen.y - ts * 0.15, ts * 0.5, ts * 0.85);
-
-            // Vertical fluting lines on column
-            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-            this.ctx.lineWidth = 1;
-            this.ctx.beginPath();
-            this.ctx.moveTo(cx - ts * 0.1, screen.y - ts * 0.15);
-            this.ctx.lineTo(cx - ts * 0.1, cy + ts * 0.2);
-            this.ctx.moveTo(cx + ts * 0.1, screen.y - ts * 0.15);
-            this.ctx.lineTo(cx + ts * 0.1, cy + ts * 0.2);
-            this.ctx.stroke();
-
-            // 4. Broken Capital on Top
-            this.ctx.fillStyle = '#94a3b8';
-            this.ctx.beginPath();
-            this.ctx.roundRect(cx - ts * 0.3, screen.y - ts * 0.22, ts * 0.6, ts * 0.12, 3);
-            this.ctx.fill();
-
-            // Glowing azure rune ring
-            const pulse = (Math.sin(now * 0.004 + x + y) + 1) * 0.5;
-            this.ctx.strokeStyle = `rgba(56, 189, 248, ${0.4 + pulse * 0.5})`;
-            this.ctx.lineWidth = 2;
-            this.ctx.beginPath();
-            this.ctx.ellipse(cx, cy - ts * 0.05, ts * 0.24, ts * 0.07, 0, 0, Math.PI * 2);
-            this.ctx.stroke();
+              // Living cyan spirit rune shimmer on the pillar runes
+              const pulse = (Math.sin(now * 0.004 + x + y) + 1) * 0.5;
+              this.ctx.fillStyle = `rgba(56, 189, 248, ${0.14 + pulse * 0.18})`;
+              this.ctx.beginPath();
+              this.ctx.ellipse(cx, cy + ts * 0.02, ts * 0.2, ts * 0.24, 0, 0, Math.PI * 2);
+              this.ctx.fill();
+            } else {
+              this.ctx.fillStyle = '#475569';
+              this.ctx.fillRect(cx - ts * 0.24, screen.y - ts * 0.12, ts * 0.48, ts * 0.82);
+            }
             break;
           }
           case 'ancient_tree': {
             const cx = screen.x + ts / 2;
             const cy = screen.y + ts / 2;
 
-            // 1. Sprawling Ground Shadow
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            // Sprawling forest canopy ground shadow
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.52)';
             this.ctx.beginPath();
-            this.ctx.ellipse(cx, cy + ts * 0.38, ts * 0.45, ts * 0.2, 0, 0, Math.PI * 2);
+            this.ctx.ellipse(cx + ts * 0.06, cy + ts * 0.35, ts * 0.45, ts * 0.19, 0, 0, Math.PI * 2);
             this.ctx.fill();
 
-            // 2. Tree Roots & Gnarled Trunk
-            this.ctx.fillStyle = '#3e2723';
-            this.ctx.beginPath();
-            // Roots spreading
-            this.ctx.moveTo(cx - ts * 0.3, cy + ts * 0.4);
-            this.ctx.lineTo(cx - ts * 0.15, cy + ts * 0.1);
-            this.ctx.lineTo(cx + ts * 0.15, cy + ts * 0.1);
-            this.ctx.lineTo(cx + ts * 0.3, cy + ts * 0.4);
-            this.ctx.closePath();
-            this.ctx.fill();
+            if (treeTex) {
+              const th = ts * 1.44;
+              const tw = th * (treeTex.width / treeTex.height);
+              const flipTree = (x * 3 + y * 5) % 2 === 1;
+              this.ctx.save();
+              this.ctx.translate(cx, screen.y + ts * 0.94 - th);
+              if (flipTree) {
+                this.ctx.scale(-1, 1);
+              }
+              this.ctx.drawImage(treeTex.canvas, -tw / 2, 0, tw, th);
+              this.ctx.restore();
 
-            // Main trunk
-            this.ctx.fillStyle = '#4e342e';
-            this.ctx.fillRect(cx - ts * 0.15, cy - ts * 0.1, ts * 0.3, ts * 0.35);
-
-            // 3. Dense 3D Spirit Canopy (Extends upward)
-            // Back layer (dark)
-            this.ctx.fillStyle = '#064e3b';
-            this.ctx.beginPath();
-            this.ctx.arc(cx, cy - ts * 0.2, ts * 0.45, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Middle layer
-            this.ctx.fillStyle = '#047857';
-            this.ctx.beginPath();
-            this.ctx.arc(cx - ts * 0.1, cy - ts * 0.32, ts * 0.32, 0, Math.PI * 2);
-            this.ctx.arc(cx + ts * 0.15, cy - ts * 0.28, ts * 0.3, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Top highlight layer
-            this.ctx.fillStyle = '#10b981';
-            this.ctx.beginPath();
-            this.ctx.arc(cx, cy - ts * 0.4, ts * 0.25, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Spirit blossom glowing particles
-            this.ctx.fillStyle = 'rgba(253, 230, 138, 0.85)';
-            this.ctx.beginPath();
-            this.ctx.arc(cx + ts * 0.12, cy - ts * 0.25, 2.5, 0, Math.PI * 2);
-            this.ctx.arc(cx - ts * 0.2, cy - ts * 0.35, 2, 0, Math.PI * 2);
-            this.ctx.arc(cx + ts * 0.05, cy - ts * 0.48, 2, 0, Math.PI * 2);
-            this.ctx.fill();
+              // Subtle golden sunlit spirit pollen motes in canopy
+              const glint = (Math.sin(now * 0.003 + x * 1.7 + y) + 1) * 0.5;
+              this.ctx.fillStyle = `rgba(253, 230, 138, ${0.35 + glint * 0.4})`;
+              this.ctx.beginPath();
+              this.ctx.arc(cx - ts * 0.12, cy - ts * 0.32, 1.8, 0, Math.PI * 2);
+              this.ctx.arc(cx + ts * 0.16, cy - ts * 0.22, 1.5, 0, Math.PI * 2);
+              this.ctx.fill();
+            } else {
+              this.ctx.fillStyle = '#047857';
+              this.ctx.beginPath();
+              this.ctx.arc(cx, cy - ts * 0.2, ts * 0.42, 0, Math.PI * 2);
+              this.ctx.fill();
+            }
             break;
           }
           case 'rock': {
             const cx = screen.x + ts / 2;
             const cy = screen.y + ts / 2;
 
-            // 1. Angular Ground Shadow
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            // Ground shadow
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.52)';
             this.ctx.beginPath();
-            this.ctx.ellipse(cx + 4, cy + ts * 0.36, ts * 0.4, ts * 0.18, 0, 0, Math.PI * 2);
+            this.ctx.ellipse(cx + 3, cy + ts * 0.34, ts * 0.42, ts * 0.17, 0, 0, Math.PI * 2);
             this.ctx.fill();
 
-            // 2. Jagged Boulder Facets (High-contrast 3D stone faces)
-            // Dark shadow side
-            this.ctx.fillStyle = '#1e293b';
+            // Hand-drawn ink-outlined mossy boulder cluster matching Reference #3 palette
+            this.ctx.save();
+            this.ctx.lineJoin = 'round';
+
+            // Main boulder body (warm olive-stone midtone)
+            this.ctx.fillStyle = '#6c7262';
+            this.ctx.strokeStyle = '#181c16';
+            this.ctx.lineWidth = 2;
             this.ctx.beginPath();
-            this.ctx.moveTo(cx - ts * 0.38, cy + ts * 0.32);
-            this.ctx.lineTo(cx - ts * 0.1, cy - ts * 0.28);
-            this.ctx.lineTo(cx, cy + ts * 0.32);
+            this.ctx.moveTo(cx - ts * 0.36, cy + ts * 0.26);
+            this.ctx.lineTo(cx - ts * 0.32, cy - ts * 0.04);
+            this.ctx.lineTo(cx - ts * 0.1, cy - ts * 0.26);
+            this.ctx.lineTo(cx + ts * 0.2, cy - ts * 0.2);
+            this.ctx.lineTo(cx + ts * 0.36, cy + ts * 0.06);
+            this.ctx.lineTo(cx + ts * 0.3, cy + ts * 0.28);
             this.ctx.closePath();
             this.ctx.fill();
-
-            // Main midtone face
-            this.ctx.fillStyle = '#334155';
-            this.ctx.beginPath();
-            this.ctx.moveTo(cx - ts * 0.1, cy - ts * 0.28);
-            this.ctx.lineTo(cx + ts * 0.25, cy - ts * 0.15);
-            this.ctx.lineTo(cx + ts * 0.35, cy + ts * 0.32);
-            this.ctx.lineTo(cx, cy + ts * 0.32);
-            this.ctx.closePath();
-            this.ctx.fill();
-
-            // Top highlight ridge
-            this.ctx.fillStyle = '#64748b';
-            this.ctx.beginPath();
-            this.ctx.moveTo(cx - ts * 0.1, cy - ts * 0.28);
-            this.ctx.lineTo(cx + ts * 0.15, cy - ts * 0.25);
-            this.ctx.lineTo(cx + ts * 0.25, cy - ts * 0.15);
-            this.ctx.closePath();
-            this.ctx.fill();
-
-            // Sharp edge highlights
-            this.ctx.strokeStyle = '#94a3b8';
-            this.ctx.lineWidth = 1;
-            this.ctx.beginPath();
-            this.ctx.moveTo(cx - ts * 0.1, cy - ts * 0.28);
-            this.ctx.lineTo(cx, cy + ts * 0.32);
-            this.ctx.lineTo(cx + ts * 0.25, cy - ts * 0.15);
             this.ctx.stroke();
+
+            // Dark lower-right shaded facet
+            this.ctx.fillStyle = '#474c41';
+            this.ctx.beginPath();
+            this.ctx.moveTo(cx - ts * 0.04, cy + ts * 0.02);
+            this.ctx.lineTo(cx + ts * 0.34, cy + ts * 0.06);
+            this.ctx.lineTo(cx + ts * 0.28, cy + ts * 0.27);
+            this.ctx.lineTo(cx - ts * 0.16, cy + ts * 0.25);
+            this.ctx.closePath();
+            this.ctx.fill();
+
+            // Warm sunlit top-left stone highlight facet
+            this.ctx.fillStyle = '#9ca38c';
+            this.ctx.beginPath();
+            this.ctx.moveTo(cx - ts * 0.29, cy - ts * 0.03);
+            this.ctx.lineTo(cx - ts * 0.1, cy - ts * 0.23);
+            this.ctx.lineTo(cx + ts * 0.15, cy - ts * 0.17);
+            this.ctx.lineTo(cx - ts * 0.02, cy + ts * 0.01);
+            this.ctx.closePath();
+            this.ctx.fill();
+
+            // Hand-drawn ink crack & facet line
+            this.ctx.strokeStyle = '#252b22';
+            this.ctx.lineWidth = 1.3;
+            this.ctx.beginPath();
+            this.ctx.moveTo(cx - ts * 0.26, cy + ts * 0.08);
+            this.ctx.lineTo(cx - ts * 0.02, cy + ts * 0.01);
+            this.ctx.lineTo(cx + ts * 0.14, cy - ts * 0.16);
+            this.ctx.stroke();
+
+            // Lush green moss tufts clinging to boulder base
+            this.ctx.fillStyle = '#4d8b31';
+            this.ctx.beginPath();
+            this.ctx.arc(cx - ts * 0.2, cy + ts * 0.22, ts * 0.09, 0, Math.PI * 2);
+            this.ctx.arc(cx + ts * 0.18, cy - ts * 0.12, ts * 0.08, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.fillStyle = '#7cb847';
+            this.ctx.beginPath();
+            this.ctx.arc(cx - ts * 0.22, cy + ts * 0.19, ts * 0.045, 0, Math.PI * 2);
+            this.ctx.arc(cx + ts * 0.16, cy - ts * 0.14, ts * 0.04, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.restore();
             break;
           }
         }
@@ -783,10 +776,10 @@ export class CanvasRenderer {
     const pulse = (Math.sin(now * 0.008) + 1) * 0.5;
 
     this.ctx.save();
-    this.ctx.lineWidth = hasTargetInFront ? 2 : 1.5;
+    this.ctx.lineWidth = hasTargetInFront ? 2.2 : 1.8;
     this.ctx.strokeStyle = hasTargetInFront
-      ? `rgba(239, 68, 68, ${0.7 + pulse * 0.3})`
-      : 'rgba(56, 189, 248, 0.4)';
+      ? `rgba(239, 68, 68, ${0.75 + pulse * 0.25})`
+      : 'rgba(56, 189, 248, 0.58)';
 
     // Four corner brackets on the front tile
     this.ctx.beginPath();
