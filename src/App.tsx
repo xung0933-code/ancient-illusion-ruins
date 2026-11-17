@@ -26,6 +26,7 @@ import { MapGenerator } from './game/MapGenerator';
 import { CameraSystem } from './game/CameraSystem';
 import { CanvasRenderer } from './game/CanvasRenderer';
 import { CombatSystem } from './game/CombatSystem';
+import { DynamicSpawnSystem, NineGridRuntimeState } from './game/DynamicSpawnSystem';
 import { sounds } from './game/audio';
 import { SkillConfirmationModal } from './components/SkillConfirmationModal';
 import { ChestRewardModal } from './components/ChestRewardModal';
@@ -54,6 +55,7 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraRef = useRef<CameraSystem>(new CameraSystem());
   const rendererRef = useRef<CanvasRenderer | null>(null);
+  const spawnRuntimeRef = useRef<NineGridRuntimeState | null>(null);
 
   // Level Selection & Game State
   const [currentLevel, setCurrentLevel] = useState<GameLevelId>('beginner');
@@ -152,16 +154,7 @@ export default function App() {
     // Generate procedural map with BFS validation
     const gen = MapGenerator.generate(config);
 
-    setGround(gen.ground);
-    setObstacles(gen.obstacles);
-    setPlayerPos(gen.playerStart);
-    setPlayerFacing('DOWN');
-    setChests(gen.chests);
-    setFinalChest(gen.finalChest);
-    setMonsters(gen.monsters);
-
-    // Reset stats
-    setPlayerStats({
+    const initialPlayerStats: PlayerStats = {
       hp: gameConfig.player.baseStats.hp,
       maxHp: gameConfig.player.baseStats.maxHp,
       baseAttack: gameConfig.player.baseStats.attack,
@@ -169,7 +162,45 @@ export default function App() {
       attackBonus: 0,
       defenseBonus: 0,
       buffs: [],
+    };
+
+    // Update camera immediately so Central Zone 5 viewport is accurate for initial preview-zone spawns
+    cameraRef.current.update(gen.playerStart.x, gen.playerStart.y, config.mapWidth, config.mapHeight);
+
+    // Initialize Nine-Grid Dynamic Spawning across the 8 surrounding preview zones
+    const spawnRuntime = DynamicSpawnSystem.createInitialState(
+      config.mapWidth,
+      config.mapHeight,
+      gen.obstacles,
+      gen.playerStart
+    );
+    DynamicSpawnSystem.evaluateAndSpawn({
+      runtimeState: spawnRuntime,
+      isInitialSetup: true,
+      turn: 0,
+      damagedThisTurn: false,
+      playerPos: gen.playerStart,
+      playerStats: initialPlayerStats,
+      monsters: gen.monsters,
+      obstacles: gen.obstacles,
+      chests: gen.chests,
+      finalChest: gen.finalChest,
+      mapWidth: config.mapWidth,
+      mapHeight: config.mapHeight,
+      camera: cameraRef.current,
     });
+    spawnRuntimeRef.current = spawnRuntime;
+
+    setGround(gen.ground);
+    setObstacles(gen.obstacles);
+    setPlayerPos(gen.playerStart);
+    setPlayerFacing('DOWN');
+    setChests(gen.chests);
+    setFinalChest(gen.finalChest);
+    setMonsters([...gen.monsters]);
+
+    // Reset stats
+    setPlayerStats(initialPlayerStats);
 
     setTurns(0);
     setTurnsSinceDamage(0);
@@ -190,9 +221,6 @@ export default function App() {
     setPendingSpellConfirm(null);
     setChestReward(null);
     setGameOverState(null);
-
-    // Update camera immediately
-    cameraRef.current.update(gen.playerStart.x, gen.playerStart.y, config.mapWidth, config.mapHeight);
 
     addLog(`進入【${config.name} (${config.mapWidth}×${config.mapHeight})】，開始探索古遺跡！`, 'info');
   }, [currentLevel, addLog]);
@@ -426,8 +454,32 @@ export default function App() {
       // 3. Update Buff Timers
       CombatSystem.updateBuffs(playerStats);
 
-      // 4. Update Stats and Turn Counter
+      // 4. Update Camera & Evaluate Nine-Grid Dynamic Spawning (only if player survived)
       const nextTurn = turns + 1;
+      if (playerStats.hp > 0 && spawnRuntimeRef.current) {
+        cameraRef.current.update(currentPos.x, currentPos.y, mapWidth, mapHeight);
+        const spawnResult = DynamicSpawnSystem.evaluateAndSpawn({
+          runtimeState: spawnRuntimeRef.current,
+          isInitialSetup: false,
+          turn: nextTurn,
+          damagedThisTurn: totalDamageTaken > 0,
+          playerPos: currentPos,
+          playerStats,
+          monsters,
+          obstacles,
+          chests,
+          finalChest,
+          mapWidth,
+          mapHeight,
+          camera: cameraRef.current,
+        });
+
+        if (spawnResult.spawnedMonsters.length > 0) {
+          setMonsters([...monsters]);
+        }
+      }
+
+      // 5. Update Stats and Turn Counter
       setTurns(nextTurn);
       setPlayerStats({ ...playerStats });
 
@@ -441,7 +493,7 @@ export default function App() {
         addLog(`小雪力竭道消，探索中斷！`, 'danger');
       }
     },
-    [playerPos, playerStats, monsters, obstacles, chests, mapWidth, mapHeight, turnsSinceDamage, turns, addFloatingText, addSpellEffect, addLog]
+    [playerPos, playerStats, monsters, obstacles, chests, finalChest, mapWidth, mapHeight, turnsSinceDamage, turns, addFloatingText, addSpellEffect, addLog]
   );
 
   // Movement Action
@@ -507,12 +559,13 @@ export default function App() {
   const handleAttack = useCallback(() => {
     if (gameOverState || pendingSpellConfirm || chestReward) return;
 
+    const allChests = finalChest ? [...chests, finalChest] : chests;
     const result = CombatSystem.executeMeleeAttack(
       playerPos,
       playerFacing,
       playerStats,
       monsters,
-      chests,
+      allChests,
       addFloatingText,
       addFlyingSwordAnim
     );
@@ -527,7 +580,7 @@ export default function App() {
 
     // Consumes 1 turn, enemies respond
     completePlayerActionTurn('御劍攻擊');
-  }, [gameOverState, pendingSpellConfirm, chestReward, playerPos, playerFacing, playerStats, monsters, chests, addFloatingText, addFlyingSwordAnim, addLog, completePlayerActionTurn]);
+  }, [gameOverState, pendingSpellConfirm, chestReward, playerPos, playerFacing, playerStats, monsters, chests, finalChest, addFloatingText, addFlyingSwordAnim, addLog, completePlayerActionTurn]);
 
   // Contextual Interaction (Open normal chest / Grand chest / Enter Vortex)
   const getAdjacentInteractive = useCallback((): { type: 'normal_chest' | 'grand_chest' | 'vortex'; target: Chest } | null => {
@@ -619,13 +672,14 @@ export default function App() {
     setSpellsState({ ...spellsState });
 
     // Execute spell effect
+    const allChests = finalChest ? [...chests, finalChest] : chests;
     const res = CombatSystem.executeSpell(
       spellId,
       playerPos,
       playerFacing,
       playerStats,
       monsters,
-      chests,
+      allChests,
       addFloatingText,
       addSpellEffect
     );
@@ -635,7 +689,7 @@ export default function App() {
 
     // Consumes 1 turn, enemies respond
     completePlayerActionTurn(`發動必殺技【${pendingSpellConfirm.title}】`);
-  }, [pendingSpellConfirm, spellsState, playerPos, playerFacing, playerStats, monsters, chests, addFloatingText, addSpellEffect, addLog, completePlayerActionTurn]);
+  }, [pendingSpellConfirm, spellsState, playerPos, playerFacing, playerStats, monsters, chests, finalChest, addFloatingText, addSpellEffect, addLog, completePlayerActionTurn]);
 
   // Cancel Spell Cast
   const handleCancelSpellCast = useCallback(() => {

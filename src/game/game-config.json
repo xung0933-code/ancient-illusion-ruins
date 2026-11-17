@@ -140,5 +140,42 @@
     "attackBonusProbability": 40,
     "defenseBonusProbability": 40,
     "spellChargeProbability": 20
+  },
+  "dynamicSpawning": {
+    "_說明": "九宮格預渲染區域與普通怪物動態生成設定（可直接修改下列數值進行遊戲調校）",
+    "_原版靜態備份說明": "原版開局全圖靜態隨機遊蕩怪數量為：初級 beginner=10、中級 intermediate=20、高級 advanced=50（原數值已完整保留於上方 mapLevels.*.monsterCount 欄位；當 disableInitialStaticRoaming 為 true 時，普通遊蕩怪改由下方九宮格動態生成系統接手）",
+    "enabled": true,
+    "disableInitialStaticRoaming": true,
+    "centralZoneWidth": 9,
+    "centralZoneHeight": 9,
+    "_可視區域說明": "中央第五區（手機實際可視畫面）設定為 9×9 格，周圍八個預覽區亦各為 9×9 格（九宮格合計 27×27 格）",
+    "maxNormalMonstersInNineGrid": 5,
+    "_數量上限說明": "小雪周遭整個九宮格（中央＋八個預覽區合計）普通怪上限為 5 隻，非單區各 5 隻",
+    "spawnCountWeights": [
+      { "count": 1, "weight": 40 },
+      { "count": 2, "weight": 30 },
+      { "count": 3, "weight": 20 },
+      { "count": 4, "weight": 7 },
+      { "count": 5, "weight": 3 }
+    ],
+    "_權重說明": "單次動態生成數量權重：1隻 40%、2隻 30%、3隻 20%、4隻 7%、5隻 3%（總生成數仍受九宮格上限與戰鬥壓力限制）",
+    "minDistanceFromPlayer": 6,
+    "_距離說明": "新生成怪物與小雪保持至少 6 格曼哈頓距離，且絕對不會直接生成於目前中央可視畫面內",
+    "minSpacingBetweenSpawns": 2,
+    "_防包圍間距說明": "同批新生成怪物彼此間隔至少 2 格，避免在同一狹窄通道瞬間扎堆堵門",
+    "zoneCooldownTurns": 10,
+    "minTurnsBetweenSpawns": 2,
+    "_節奏說明": "每個預覽區觸發後有 10 回合冷卻（防止在邊界線來回跨步重複刷怪），且兩波生成之間至少間隔 2 回合",
+    "eliteGuardianEveryNChests": 3,
+    "_菁英怪說明": "每第 N 個普通寶箱（例如第 3、6、9... 個）的守衛升級為菁英怪【寶箱守護尊者】(chestBoss)，用以在探索過程中觸發第8條特殊戰鬥管制；若設為 0 則全部保持一般寶箱守衛",
+    "combatPressure": {
+      "_說明": "第6條高壓戰鬥判斷：當小雪被多怪追擊、貼身包圍或低血量時自動減量或暫停生成",
+      "chasingRadius": 6,
+      "moderatePressureMonsterCount": 2,
+      "pausePressureMonsterCount": 3,
+      "lowHpRatio": 0.35,
+      "moderatePressureMaxSpawn": 1,
+      "pauseWhenHurtAndPressured": true
+    }
   }
 }

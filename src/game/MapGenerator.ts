@@ -213,34 +213,51 @@ export class MapGenerator {
     const pStats = gameConfig.player.baseStats;
     const mConfigs = gameConfig.monsterStats;
 
-    // Normal Chest Guardians: exactly 1 normal monster per normal chest (normal stats, not a boss!)
-    for (const ch of normalChests) {
-      // Find neighbor cell for guardian normal monster
-      const guardPos = this.findReachableAdjacentTile(ch, width, height, obstacles, reachable, usedPositions);
-      if (!guardPos) return null; // Couldn't place guardian, retry
+    // Sort normal chests by distance from playerStart so early chests stay approachable and later chests carry Elite guardians
+    normalChests.sort(
+      (a, b) =>
+        Math.abs(a.x - playerStart!.x) +
+        Math.abs(a.y - playerStart!.y) -
+        (Math.abs(b.x - playerStart!.x) + Math.abs(b.y - playerStart!.y))
+    );
 
+    const dynamicCfg = gameConfig.dynamicSpawning;
+    const eliteInterval = dynamicCfg?.enabled ? dynamicCfg.eliteGuardianEveryNChests : 0;
+
+    // Normal Chest Guardians (with every Nth chest upgraded to Elite 'chestBoss' guardian)
+    normalChests.forEach((ch, idx) => {
+      // Find neighbor cell for guardian monster
+      const guardPos = this.findReachableAdjacentTile(ch, width, height, obstacles, reachable, usedPositions);
+      if (!guardPos) return; // Handled below if any failed
+
+      const isEliteGuardian = eliteInterval > 0 && (idx + 1) % eliteInterval === 0;
+      const statsCfg = isEliteGuardian ? mConfigs.chestBoss : mConfigs.normal;
       const guardId = `guard_${ch.id}`;
       ch.guardianBossId = guardId;
       usedPositions.add(`${guardPos.x},${guardPos.y}`);
 
       monsters.push({
         id: guardId,
-        name: `寶箱守衛妖魔`,
-        type: 'normal',
+        name: isEliteGuardian ? mConfigs.chestBoss.name : '寶箱守衛妖魔',
+        type: isEliteGuardian ? 'chestBoss' : 'normal',
         x: guardPos.x,
         y: guardPos.y,
-        hp: Math.round(pStats.hp * mConfigs.normal.hpRatio),
-        maxHp: Math.round(pStats.hp * mConfigs.normal.hpRatio),
-        attack: Math.round(pStats.attack * mConfigs.normal.attackRatio),
-        defense: Math.round(pStats.defense * mConfigs.normal.defenseRatio),
-        detectionRadius: mConfigs.normal.detectionRadius,
+        hp: Math.round(pStats.hp * statsCfg.hpRatio),
+        maxHp: Math.round(pStats.hp * statsCfg.hpRatio),
+        attack: Math.round(pStats.attack * statsCfg.attackRatio),
+        defense: Math.round(pStats.defense * statsCfg.defenseRatio),
+        detectionRadius: statsCfg.detectionRadius,
         guardTargetId: ch.id,
         isDead: false,
         facing: 'DOWN',
       });
+    });
+
+    if (monsters.length < normalChests.length) {
+      return null; // Couldn't place all chest guardians, retry generation
     }
 
-    // Final Boss: the ONLY Boss in the game, guarding the final grand chest
+    // Final Boss: guarding the final grand chest
     const finalBossPos = this.findReachableAdjacentTile(finalChest, width, height, obstacles, reachable, usedPositions);
     if (!finalBossPos) return null;
 
@@ -264,35 +281,39 @@ export class MapGenerator {
       facing: 'DOWN',
     });
 
-    // Roaming Regular Monsters: exactly config.monsterCount regular monsters scattered across the map
-    let regularMonsterTries = 0;
-    const targetRoamingMonsters = config.monsterCount;
-    let spawnedRoaming = 0;
-    while (spawnedRoaming < targetRoamingMonsters && regularMonsterTries < 600) {
-      regularMonsterTries++;
-      const mx = 2 + Math.floor(Math.random() * (width - 4));
-      const my = 2 + Math.floor(Math.random() * (height - 4));
-      const key = `${mx},${my}`;
+    // Roaming Regular Monsters: handled by Nine-Grid DynamicSpawnSystem when dynamicSpawning.disableInitialStaticRoaming is true;
+    // otherwise falls back to static whole-map distribution using config.monsterCount backup values.
+    const skipStaticRoaming = Boolean(dynamicCfg?.enabled && dynamicCfg?.disableInitialStaticRoaming);
+    if (!skipStaticRoaming) {
+      let regularMonsterTries = 0;
+      const targetRoamingMonsters = config.monsterCount;
+      let spawnedRoaming = 0;
+      while (spawnedRoaming < targetRoamingMonsters && regularMonsterTries < 600) {
+        regularMonsterTries++;
+        const mx = 2 + Math.floor(Math.random() * (width - 4));
+        const my = 2 + Math.floor(Math.random() * (height - 4));
+        const key = `${mx},${my}`;
 
-      // Distance from player start >= 7
-      const distToPlayer = Math.abs(mx - playerStart.x) + Math.abs(my - playerStart.y);
-      if (distToPlayer >= 7 && reachable.has(key) && !usedPositions.has(key)) {
-        usedPositions.add(key);
-        spawnedRoaming++;
-        monsters.push({
-          id: `monster_roam_${spawnedRoaming}`,
-          name: mConfigs.normal.name,
-          type: 'normal',
-          x: mx,
-          y: my,
-          hp: Math.round(pStats.hp * mConfigs.normal.hpRatio),
-          maxHp: Math.round(pStats.hp * mConfigs.normal.hpRatio),
-          attack: Math.round(pStats.attack * mConfigs.normal.attackRatio),
-          defense: Math.round(pStats.defense * mConfigs.normal.defenseRatio),
-          detectionRadius: mConfigs.normal.detectionRadius,
-          isDead: false,
-          facing: Math.random() < 0.5 ? 'DOWN' : 'LEFT',
-        });
+        // Distance from player start >= 7
+        const distToPlayer = Math.abs(mx - playerStart.x) + Math.abs(my - playerStart.y);
+        if (distToPlayer >= 7 && reachable.has(key) && !usedPositions.has(key)) {
+          usedPositions.add(key);
+          spawnedRoaming++;
+          monsters.push({
+            id: `monster_roam_${spawnedRoaming}`,
+            name: mConfigs.normal.name,
+            type: 'normal',
+            x: mx,
+            y: my,
+            hp: Math.round(pStats.hp * mConfigs.normal.hpRatio),
+            maxHp: Math.round(pStats.hp * mConfigs.normal.hpRatio),
+            attack: Math.round(pStats.attack * mConfigs.normal.attackRatio),
+            defense: Math.round(pStats.defense * mConfigs.normal.defenseRatio),
+            detectionRadius: mConfigs.normal.detectionRadius,
+            isDead: false,
+            facing: Math.random() < 0.5 ? 'DOWN' : 'LEFT',
+          });
+        }
       }
     }
 
@@ -308,7 +329,7 @@ export class MapGenerator {
     };
   }
 
-  private static computeReachableCells(
+  public static computeReachableCells(
     width: number,
     height: number,
     obstacles: (ObstacleType | null)[][],

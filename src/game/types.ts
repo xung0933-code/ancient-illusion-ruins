@@ -31,6 +31,7 @@ export interface Monster {
   isDead: boolean;
   facing: Direction;
   lastHurtTurn?: number;
+  isDynamicSpawn?: boolean;
 }
 
 export interface Chest {
@@ -151,3 +152,33 @@ export interface GameLogEntry {
   message: string;
   type: 'info' | 'combat' | 'loot' | 'spell' | 'danger';
 }
+
+export interface SpawnCountWeight {
+  count: number;
+  weight: number;
+}
+
+export interface CombatPressureConfig {
+  chasingRadius: number;
+  moderatePressureMonsterCount: number;
+  pausePressureMonsterCount: number;
+  lowHpRatio: number;
+  moderatePressureMaxSpawn: number;
+  pauseWhenHurtAndPressured: boolean;
+}
+
+export interface DynamicSpawningConfig {
+  enabled: boolean;
+  disableInitialStaticRoaming: boolean;
+  centralZoneWidth: number;
+  centralZoneHeight: number;
+  maxNormalMonstersInNineGrid: number;
+  spawnCountWeights: SpawnCountWeight[];
+  minDistanceFromPlayer: number;
+  minSpacingBetweenSpawns: number;
+  zoneCooldownTurns: number;
+  minTurnsBetweenSpawns: number;
+  eliteGuardianEveryNChests: number;
+  combatPressure: CombatPressureConfig;
+}
+
