@@ -33,6 +33,7 @@ import { ChestRewardModal } from './components/ChestRewardModal';
 import { GameOverModal } from './components/GameOverModal';
 import { TouchControls } from './components/TouchControls';
 import { DifficultySelectModal } from './components/DifficultySelectModal';
+import { ArtStyleShowcase, PreviewStyleId } from './components/ArtStyleShowcase';
 import {
   Volume2,
   VolumeX,
@@ -48,6 +49,8 @@ import {
   Crosshair,
   Home,
   X,
+  Palette,
+  BookOpen,
 } from 'lucide-react';
 import avatarImgUrl from './assets/images/xiaoxue_avatar.png';
 
@@ -115,6 +118,8 @@ export default function App() {
   } | null>(null);
   const [gameOverState, setGameOverState] = useState<{ isVictory: boolean } | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [helpModalTab, setHelpModalTab] = useState<'art_style' | 'rules'>('art_style');
+  const [previewStyleId, setPreviewStyleId] = useState<PreviewStyleId>('classic');
   const [showRestartConfirm, setShowRestartConfirm] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [logs, setLogs] = useState<GameLogEntry[]>([]);
@@ -889,10 +894,13 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setShowHelpModal(true)}
+                onClick={() => {
+                  setHelpModalTab('art_style');
+                  setShowHelpModal(true);
+                }}
                 className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-                title="操作與規則說明"
-                aria-label="操作與規則說明"
+                title="美術風格預覽與操作指南"
+                aria-label="美術風格預覽與操作指南"
               >
                 <HelpCircle className="w-4 h-4" />
               </button>
@@ -1263,14 +1271,23 @@ export default function App() {
           />
         )}
 
-        {/* Help / Game Rules Modal */}
+        {/* Help / Art Style & Game Rules Modal */}
         {showHelpModal && (
           <div className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bg-slate-900 rounded-2xl border border-slate-700 p-5 text-slate-200 shadow-2xl max-h-[90%] flex flex-col">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Compass className="w-5 h-5 text-cyan-400" />
-                  《幻變古遺跡》探索指南
+            <div className="w-full max-w-sm bg-slate-900 rounded-2xl border border-slate-700 p-4 text-slate-200 shadow-2xl max-h-[92%] flex flex-col">
+              <div className="flex items-center justify-between mb-2.5 shrink-0">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  {helpModalTab === 'art_style' ? (
+                    <>
+                      <Palette className="w-5 h-5 text-cyan-400" />
+                      <span>美術風格範本預覽</span>
+                    </>
+                  ) : (
+                    <>
+                      <Compass className="w-5 h-5 text-cyan-400" />
+                      <span>《幻變古遺跡》探索指南</span>
+                    </>
+                  )}
                 </h3>
                 <button
                   onClick={() => setShowHelpModal(false)}
@@ -1281,33 +1298,82 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="space-y-2.5 text-xs leading-relaxed text-slate-300 overflow-y-auto pr-1 flex-1">
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-                  <span className="font-bold text-cyan-300 block mb-1">一、直覺觸控與按鍵操作</span>
-                  使用下方十字方向鍵移動、右側【御劍】攻擊正前方一格敵人。面對寶箱或漩渦時點擊中央亮起按鈕即可互動。（電腦亦支援 WASD / 方向鍵、J / 空白鍵、E / Enter、數字鍵 1~5）
-                </div>
+              {/* Navigation Links inside ? Modal (Default opens Art Style Showcase) */}
+              <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-950/90 border border-slate-800 mb-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setHelpModalTab('art_style')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    helpModalTab === 'art_style'
+                      ? 'bg-cyan-600 text-white shadow'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>美術風格</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHelpModalTab('rules')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    helpModalTab === 'rules'
+                      ? 'bg-cyan-600 text-white shadow'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>操作與探索指南</span>
+                </button>
+              </div>
 
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-                  <span className="font-bold text-amber-300 block mb-1">二、純粹 Roguelike 核心</span>
-                  無飢餓度、無背包管理、無貨幣商店。專注探索迷宮、誅殺怪物與守護 Boss、收集寶箱強化攻防、斬滅太古巨龍通關。
-                </div>
+              <div className="overflow-y-auto pr-1 flex-1">
+                {helpModalTab === 'art_style' ? (
+                  <ArtStyleShowcase
+                    selectedPreviewId={previewStyleId}
+                    onSelectPreview={(id) => setPreviewStyleId(id)}
+                  />
+                ) : (
+                  <div className="space-y-2.5 text-xs leading-relaxed text-slate-300">
+                    <button
+                      type="button"
+                      onClick={() => setHelpModalTab('art_style')}
+                      className="w-full flex items-center justify-between p-3 rounded-xl bg-cyan-950/40 hover:bg-cyan-950/60 border border-cyan-500/40 text-cyan-200 transition-colors cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2 font-bold">
+                        <Palette className="w-4 h-4 text-cyan-400" />
+                        <span>開啟「美術風格範本」比較 5 種畫風</span>
+                      </span>
+                      <span className="text-[11px] text-cyan-300">前往檢視 →</span>
+                    </button>
 
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-                  <span className="font-bold text-emerald-300 block mb-1">三、自然生命恢復</span>
-                  每次有效行動後，若當回合未受傷且脫離戰鬥 3 回合以上，每回合自然恢復 2 點生命。
-                </div>
+                    <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                      <span className="font-bold text-cyan-300 block mb-1">一、直覺觸控與按鍵操作</span>
+                      使用下方十字方向鍵移動、右側【御劍】攻擊正前方一格敵人。面對寶箱或漩渦時點擊中央亮起按鈕即可互動。（電腦亦支援 WASD / 方向鍵、J / 空白鍵、E / Enter、數字鍵 1~5）
+                    </div>
 
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-                  <span className="font-bold text-yellow-300 block mb-1">四、五行必殺技卡片確認</span>
-                  開箱獲得充能後按鈕亮起。點擊彈出確認卡片（遊戲暫停），點擊【發動】才扣除充能與消耗 1 回合；點擊【取消】保留充能不扣回合。
-                </div>
+                    <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                      <span className="font-bold text-amber-300 block mb-1">二、純粹 Roguelike 核心</span>
+                      無飢餓度、無背包管理、無貨幣商店。專注探索迷宮、誅殺怪物與守護 Boss、收集寶箱強化攻防、斬滅太古巨龍通關。
+                    </div>
+
+                    <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                      <span className="font-bold text-emerald-300 block mb-1">三、自然生命恢復</span>
+                      每次有效行動後，若當回合未受傷且脫離戰鬥 3 回合以上，每回合自然恢復 2 點生命。
+                    </div>
+
+                    <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                      <span className="font-bold text-yellow-300 block mb-1">四、五行必殺技卡片確認</span>
+                      開箱獲得充能後按鈕亮起。點擊彈出確認卡片（遊戲暫停），點擊【發動】才扣除充能與消耗 1 回合；點擊【取消】保留充能不扣回合。
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button
                 onClick={() => setShowHelpModal(false)}
-                className="mt-4 w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm transition-colors cursor-pointer shrink-0"
+                className="mt-3 w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm transition-colors cursor-pointer shrink-0"
               >
-                明白，重返探索
+                返回遺跡探索
               </button>
             </div>
           </div>
